@@ -1,0 +1,14 @@
+name: metalmo
+channels:
+  - pytorch
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.7.12
+  - numpy
+  - pip
+  - tensorboard=2.6.0
+  - tqdm
+  - pytorch=1.9.0
+  - black
+
