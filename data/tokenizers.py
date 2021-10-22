@@ -21,7 +21,7 @@ class BatchedTextIterable:
     def __iter__(self):
         return map(
             lambda x: self.dataset[self.split][x : x + self.batch_size][self.column],
-            range(len(self), self.batch_size),
+            range(0, len(self), self.batch_size),
         )
 
     def __len__(self):
