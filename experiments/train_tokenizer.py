@@ -34,7 +34,7 @@ def add_args(parser):
     )
     parser.add_argument(
         "--save_dir",
-        type="str",
+        type=str,
         default="save/tokenizers/wiki-bpe",
         help="Where to save the trained tokenizer files",
     )
