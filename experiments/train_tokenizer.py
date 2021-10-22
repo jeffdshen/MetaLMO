@@ -45,6 +45,8 @@ def main():
     add_args(parser)
     args = parser.parse_args()
 
+    path = Path(args.save_dir)
+    path.mkdir(parents=True, exist_ok=True)
     dataset = load_dataset(args.data_path, args.data_name)
     dataset_iterable = TextIterable(dataset, "train", "text")
     tokenizer = tokenizers.ByteLevelBPETokenizer()
@@ -59,8 +61,6 @@ def main():
         dataset_iterable, vocab_size=args.vocab_size, special_tokens=special_tokens
     )
 
-    path = Path()
-    path.mkdir(parents=True, exists_ok=True)
     tokenizer.save_model(args.save_dir)
 
 
