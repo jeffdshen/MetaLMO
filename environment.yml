@@ -5,7 +5,7 @@ channels:
   - huggingface
   - defaults
 dependencies:
-  - python=3.7.12
+  - python=3.7.10
   - numpy
   - pip
   - tensorboard=2.6.0
