@@ -4,7 +4,7 @@ import argparse
 from datasets import load_dataset
 import tokenizers
 
-from data.tokenizers import TextIterable
+from data.tokenizers import BatchedTextIterable
 
 
 def add_args(parser):
@@ -38,6 +38,12 @@ def add_args(parser):
         default="save/tokenizers/wiki-bpe",
         help="Where to save the trained tokenizer files",
     )
+    parser.add_argument(
+        "--batch_size",
+        type=int,
+        default=1000,
+        help="How many texts to load a time",
+    )
 
 
 def main():
@@ -48,7 +54,7 @@ def main():
     path = Path(args.save_dir)
     path.mkdir(parents=True, exist_ok=True)
     dataset = load_dataset(args.data_path, args.data_name)
-    dataset_iterable = TextIterable(dataset, "train", "text")
+    dataset_iterable = BatchedTextIterable(dataset, "train", "text", args.batch_size)
     tokenizer = tokenizers.ByteLevelBPETokenizer()
     special_tokens = ["[PAD]", "[MASK]", "[SEP]"]
     if args.cls_count == 1:
