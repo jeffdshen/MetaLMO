@@ -1,3 +1,8 @@
+import pathlib
+
+from tokenizers import ByteLevelBPETokenizer
+
+
 class TextIterable:
     def __init__(self, dataset, split, column):
         self.dataset = dataset
@@ -26,3 +31,9 @@ class BatchedTextIterable:
 
     def __len__(self):
         return len(self.dataset[self.split])
+
+
+def from_pretrained(path, **kwargs):
+    vocab_file = str(pathlib.Path(path, "vocab.json"))
+    merges_file = str(pathlib.Path(path, "merges.txt"))
+    return ByteLevelBPETokenizer.from_file(vocab_file, merges_file, **kwargs)
