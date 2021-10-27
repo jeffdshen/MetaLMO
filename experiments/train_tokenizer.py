@@ -57,11 +57,8 @@ def main():
     dataset_iterable = BatchedTextIterable(dataset, "train", "text", args.batch_size)
     tokenizer = tokenizers.ByteLevelBPETokenizer()
     special_tokens = ["[PAD]", "[MASK]", "[SEP]"]
-    if args.cls_count == 1:
-        special_tokens.append("[CLS]")
-    else:
-        for i in range(args.cls_count):
-            special_tokens.append("[CLS{}]".format(i))
+    for i in range(args.cls_count):
+        special_tokens.append("[CLS{}]".format(i))
 
     tokenizer.train_from_iterator(
         dataset_iterable, vocab_size=args.vocab_size, special_tokens=special_tokens
