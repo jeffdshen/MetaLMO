@@ -193,7 +193,7 @@ class MetricRecordTestCase(unittest.TestCase):
         self.assertAlmostEqual(em, 1 / 3)
 
 
-class MetricMultiRC(unittest.TestCase):
+class MetricMultiRCTestCase(unittest.TestCase):
     def test_accurate(self):
         examples = [
             {
