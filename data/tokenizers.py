@@ -54,6 +54,26 @@ def get_task_tokenizer(path, model_max_length, stride, **kwargs):
     return tokenizer
 
 
+def get_pretrain_tokenizer(path, model_max_length, **kwargs):
+    vocab_file = str(pathlib.Path(path, "vocab.json"))
+    merges_file = str(pathlib.Path(path, "merges.txt"))
+
+    tokenizer = ByteLevelBPETokenizer.from_file(vocab_file, merges_file, **kwargs)
+    tokenizer.enable_truncation(
+        model_max_length, stride=0, strategy="only_first"
+    )
+    tokenizer.enable_padding(pad_id=tokenizer.token_to_id("[PAD]"))
+    tokenizer.post_processor = TemplateProcessing(
+        single="[CLS0] $A [SEP]",
+        pair="[CLS0] $A [SEP] $B:1 [SEP]:1",
+        special_tokens=[
+            ("[CLS0]", tokenizer.token_to_id("[CLS0]")),
+            ("[SEP]", tokenizer.token_to_id("[SEP]")),
+        ],
+    )
+    return tokenizer
+
+
 def get_fake_tokenizer(texts, vocab_size, cls_count, model_max_length, stride):
     tokenizer = ByteLevelBPETokenizer()
     special_tokens = ["[PAD]", "[MASK]", "[SEP]"]
