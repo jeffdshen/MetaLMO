@@ -126,4 +126,4 @@ class TeacherRoBERTa(nn.Module):
     def get_loss(self, scores_x, scores_y, x, y, mask_x, mask_y):
         loss_x = self.head_x.get_loss(scores_x, x, mask_x, self.ignore_idx)
         loss_y = self.head_y.get_loss(scores_y, y, mask_y, self.ignore_idx)
-        return loss_x + loss_y
+        return 0.5 * loss_x + 0.5 * loss_y
