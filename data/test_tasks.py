@@ -3,7 +3,7 @@ import unittest
 import torch
 import torch.nn.functional as F
 
-from .tasks import get_tasks
+from .tasks import scores_to_metrics, get_tasks, scores_to_overall
 from .tokenizers import get_fake_tokenizer
 
 
@@ -332,3 +332,45 @@ class ReCoRDTestCase(unittest.TestCase):
         f1, em = self.task.score(pred, self.examples, strict=False)
         self.assertAlmostEqual(f1, 5 / 9)
         self.assertAlmostEqual(em, 1 / 3)
+
+
+class FunctionsTestCase(unittest.TestCase):
+    def test_scores_to_overall(self):
+        scores = {
+            "BoolQ": 91.0,
+            "CB" : (98.6, 99.2),
+            "COPA": 97.4,
+            "MultiRC": (88.6, 63.2),
+            "ReCoRD": (94.7, 94.2),
+            "RTE": 92.6,
+            "WiC": 77.4,
+            "WSC": 97.3,
+        }
+
+        overall = scores_to_overall(scores)
+        self.assertAlmostEqual(overall["SuperGLUE"], 90.61875)
+        self.assertAlmostEqual(overall["Overall"], 90.61875)
+
+    def test_scores_to_metrics(self):
+        scores = {
+            "BoolQ": 91.0,
+            "CB" : (98.6, 99.2),
+            "COPA": 97.4,
+            "MultiRC": (88.6, 63.2),
+            "ReCoRD": (94.7, 94.2),
+            "RTE": 92.6,
+            "WiC": 77.4,
+            "WSC": 97.3,
+        }
+        metrics = scores_to_metrics(scores)
+        self.assertAlmostEqual(metrics["BoolQ"], 91.0)
+        self.assertAlmostEqual(metrics["CB_F1"], 98.6)
+        self.assertAlmostEqual(metrics["CB_Acc"], 99.2)
+        self.assertAlmostEqual(metrics["COPA"], 97.4)
+        self.assertAlmostEqual(metrics["MultiRC_F1a"], 88.6)
+        self.assertAlmostEqual(metrics["MultiRC_EM"], 63.2)
+        self.assertAlmostEqual(metrics["ReCoRD_F1"], 94.7)
+        self.assertAlmostEqual(metrics["ReCoRD_Acc"], 94.2)
+        self.assertAlmostEqual(metrics["RTE"], 92.6)
+        self.assertAlmostEqual(metrics["WiC"], 77.4)
+        self.assertAlmostEqual(metrics["WSC"], 97.3)

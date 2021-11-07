@@ -4,6 +4,7 @@ from itertools import groupby
 
 import torch
 import torch.nn.functional as F
+import numpy as np
 
 from .metrics import metric_accuracy, metric_f1, metric_multirc, metric_record
 
@@ -418,3 +419,31 @@ def get_tasks(tokenizer):
         "WiC": WiCTask(task_ids["WiC"], tokenizer, labels["WiC"]),
         "WSC": WSCTask(task_ids["WSC"], tokenizer, labels["WSC"]),
     }
+
+
+def scores_to_overall(scores):
+    superglue = ["BoolQ", "CB", "COPA", "MultiRC", "ReCoRD", "RTE", "WiC", "WSC"]
+    superglue_score = np.mean([np.mean(scores[name]) for name in superglue])
+    return {
+        "Overall": superglue_score,
+        "SuperGLUE": superglue_score
+    }
+
+def scores_to_metrics(scores):
+    metrics = scores.copy()
+    if "CB" in metrics:
+        f1, acc = metrics.pop("CB")
+        metrics["CB_F1"] = f1
+        metrics["CB_Acc"] = acc
+    
+    if "MultiRC" in metrics:
+        f1a, em = metrics.pop("MultiRC")
+        metrics["MultiRC_F1a"] = f1a
+        metrics["MultiRC_EM"] = em
+
+    if "ReCoRD" in metrics:
+        f1, acc = metrics.pop("ReCoRD")
+        metrics["ReCoRD_F1"] = f1
+        metrics["ReCoRD_Acc"] = acc
+
+    return metrics
