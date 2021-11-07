@@ -1,6 +1,6 @@
 # Copyright (c) Jeffrey Shen
 
-"""RoBERTa Model with LM head"""
+"""RoBERTa Model with two heads"""
 
 import torch
 import torch.nn as nn
@@ -10,7 +10,7 @@ import torch.cuda.amp as amp
 import models.transformer as T
 
 
-class RoBERTa(nn.Module):
+class TeacherRoBERTa(nn.Module):
     def __init__(
         self,
         dim,
@@ -68,11 +68,15 @@ class RoBERTa(nn.Module):
         else:
             self.final_layer_norm = None
 
-        self.head = T.LMHead(
+        self.head_x = T.LMHead(
             dim=dim,
             output_tokens=max_tokens,
             activation=activation,
-            weight=embed_tokens.embed.weight,
+        )
+        self.head_y = T.LMHead(
+            dim=dim,
+            output_tokens=max_tokens,
+            activation=activation,
         )
         self.ignore_idx = ignore_idx
         self.apply(lambda mod: T.init_params_bert(mod, 0.02))
@@ -89,30 +93,37 @@ class RoBERTa(nn.Module):
         x = self.encoder.forward(x, key_padding_mask=padding_mask)
         if self.final_layer_norm is not None:
             x = self.final_layer_norm(x)
-        x = self.head(x)
-        x = x.transpose(0, 1)
-        return x
+        x, y = self.head_x(x), self.head_y(x)
+        x, y = x.transpose(0, 1), y.transpose(0, 1)
+        return x, y
 
     # (N, S, O), (N, S) -> (N, S, O)
-    def mask_scores(self, x, padding_mask):
-        return self.head.mask_scores(x, padding_mask)
+    def mask_scores(self, x, y, padding_mask):
+        return (
+            self.head.mask_scores(x, padding_mask),
+            self.head.mask_scores(y, padding_mask),
+        )
 
     # (N, S, O) -> (N, S)
-    def get_top(self, x):
-        return self.head.get_top(x)
+    def get_top(self, x, y):
+        return self.head_x.get_top(x), self.head_y.get_top(y)
 
     # ((N, S, O), (N, S), (N, S), K) -> (K, N, S)
-    def sample(self, scores, x, mask, k, alpha=1.0):
-        return self.head.sample(scores, x, mask, k, alpha=alpha)
+    def sample(self, scores_x, scores_y, x, y, mask_x, mask_y, k, alpha=1.0):
+        sample_x = self.head_x.sample(scores_x, x, mask_x, k, alpha=alpha)
+        sample_y = self.head_x.sample(scores_y, y, mask_y, k, alpha=alpha)
+        return sample_x, sample_y
 
     # (N, S, O) -> (N, S, O*)
-    def get_log_prob(self, x):
-        return self.head.get_log_prob(x)
+    def get_log_prob(self, x, y):
+        return self.head_x.get_log_prob(x), self.head_y.get_log_prob(y)
 
     # (N, S, O) -> (N, S, O*)
-    def get_prob(self, x):
-        return self.head.get_prob(x)
+    def get_prob(self, x, y):
+        return self.head_x.get_prob(x), self.head_y.get_prob(y)
 
     # ((N, S, O), (N, S), (N, S)) -> (1, )
-    def get_loss(self, scores, y, mask):
-        return self.head.get_loss(scores, y, mask, self.ignore_idx)
+    def get_loss(self, scores_x, scores_y, x, y, mask_x, mask_y):
+        loss_x = self.head_x.get_loss(scores_x, x, mask_x, self.ignore_idx)
+        loss_y = self.head_y.get_loss(scores_y, y, mask_y, self.ignore_idx)
+        return loss_x + loss_y

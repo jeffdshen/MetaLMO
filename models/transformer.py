@@ -205,12 +205,15 @@ class LMHead(nn.Module):
     def get_top(x):
         return torch.argmax(x, dim=-1)
 
-    # (N, O) -> (N, K)
+    # ((N, S, O), (N, S), (N, S), K) -> (K, N, S)
     @staticmethod
-    def sample(x, k, alpha=1.0):
-        s = F.softmax(x / alpha, dim=-1)
-        m = torch.multinomial(s.view(-1, s.size(-1)), k, replacement=True)
-        return m.view(s.size(0), k)
+    def sample(scores, x, mask, k, alpha=1.0):
+        x = x.detach().clone()
+        scores = scores.detach().clone()
+        x = x.unsqueeze(-1).repeat(1, 1, k)
+        x[~mask, :] = softmax_sample(scores[~mask, :], k, alpha=alpha)
+        x = x.permute(-1, 0, 1).contiguous()
+        return x
 
     # (N, S, O) -> (N, S, O*)
     @staticmethod
@@ -222,9 +225,10 @@ class LMHead(nn.Module):
     def get_prob(x):
         return F.softmax(x, dim=-1)
 
-    # ((N, S, O), (N, S)) -> (1, )
+    # ((N, S, O), (N, S), (N, S)) -> (1, )
     @staticmethod
-    def get_loss(scores, y, ignore_idx):
+    def get_loss(scores, y, mask, ignore_idx):
+        y = y.masked_fill(mask, ignore_idx)
         # Swap the dimension back to original order for speed reasons
         if not scores.is_contiguous():
             scores = scores.transpose(0, 1)
@@ -241,6 +245,13 @@ def get_positions(x):
 # (N, S) -> (N, S)
 def get_padding_mask(x, padding_idx):
     return x.eq(padding_idx)
+
+
+# (N, O) -> (N, K)
+def softmax_sample(x, k, alpha=1.0):
+    s = F.softmax(x / alpha, dim=-1)
+    m = torch.multinomial(s.view(-1, s.size(-1)), k, replacement=True) 
+    return m.view(s.size(0), k)
 
 
 def init_params_bert(module, std):
