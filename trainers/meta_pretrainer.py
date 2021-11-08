@@ -303,7 +303,7 @@ def train_step(x_u, x_l, y_l, student, teacher, args, step, autocast=True):
         loss = student.model.get_loss(scores, y_l, mask_x_l)
     info["student.loss1"] = loss.item()
     student.scaler.scale(loss).backward()
-    student.scaler.unscale_(loss)
+    student.scaler.unscale_(student.noop_optimizer)
     nn.utils.clip_grad_norm_(student.model.parameters(), args.max_grad_norm)
     student.scaler.step(student.noop_optimizer)
     student.scaler.update()
