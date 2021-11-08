@@ -21,6 +21,7 @@ from trainers.state import (
     SimpleState,
     ModelSaver,
 )
+from trainers.optimizers import NoopOptimizer
 import trainers.config as config
 from data.tokenizers import get_pretrain_tokenizer, get_task_tokenizer
 from data.datasets import (
@@ -72,6 +73,7 @@ class ModelState:
     optimizer = None
     scheduler = None
     scaler = None
+    noop_optimizer = None
 
 
 def get_stats(tbx):
@@ -181,6 +183,7 @@ def train(args):
 
     # TODO: Use the same settings for now
     student.optimizer = config.get_adamw_optimizer(args, student.model)
+    student.noop_optimizer = NoopOptimizer(student.model.parameters())
     student.scheduler = config.get_lwpd_scheduler(args, student.optimizer, total_steps)
     student.scaler = amp.GradScaler()
     teacher.optimizer = config.get_adamw_optimizer(args, teacher.model)
@@ -300,14 +303,14 @@ def train_step(x_u, x_l, y_l, student, teacher, args, step, autocast=True):
         loss = student.model.get_loss(scores, y_l, mask_x_l)
     info["student.loss1"] = loss.item()
     student.scaler.scale(loss).backward()
-    inv_scale = 1.0 / student.scaler.get_scale()
-    for param in student.model.parameters():
-        param.grad *= inv_scale
+    student.scaler.unscale_(loss)
     nn.utils.clip_grad_norm_(student.model.parameters(), args.max_grad_norm)
+    student.scaler.step(student.noop_optimizer)
+    student.scaler.update()
     h = 0.0
     for delta, param in zip(deltas, student.model.parameters()):
         h += delta.flatten().dot(param.grad.flatten())
-    student.optimizer.zero_grad()
+    student.noop_optimizer.zero_grad()
     info["h"] = h.item()
 
     # Update teacher grad
