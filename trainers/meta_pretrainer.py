@@ -231,9 +231,9 @@ def train(args):
                     loss, val_scores, preds = evaluate(
                         student.model, val_task_loaders, task_datasets, device, args
                     )
-                    for k in val_scores:
-                        val_scores[k] *= 100
                     overall = scores_to_overall(val_scores)
+                    for k in overall:
+                        overall[k] *= 100
                     overall["loss"] = loss
                     saver.save(step.sample_num, student.model, overall)
 
@@ -246,6 +246,8 @@ def train(args):
                     # Log to TensorBoard
                     log.info("Visualizing in TensorBoard...")
                     metrics = scores_to_metrics(val_scores)
+                    for k in metrics:
+                        metrics[k] *= 100
                     metrics.update(overall)
 
                     val_tbx(metrics, step.sample_num)
