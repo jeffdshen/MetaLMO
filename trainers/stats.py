@@ -21,6 +21,30 @@ class AverageMeter:
         self.avg = self.sum / self.count
 
 
+class TensorboardScalars:
+    def __init__(self, tbx, group, tags):
+        super().__init__()
+        self.tbx = tbx
+        self.group = group
+        self.tags = tags
+
+    def __call__(self, info, step):
+        for tag in self.tags:
+            value = info[tag]
+            self.tbx.add_scalar("{}/{}".format(self.group, tag), value, step)
+
+
+class TensorboardWeights:
+    def __init__(self, tbx, group):
+        super().__init__()
+        self.tbx = tbx
+        self.group = group
+
+    def __call__(self, model, step):
+        for tags, params in model.named_parameters():
+            self.tbx.add_histogram("{}/{}".format(self.group, tags), params.data, step)
+
+
 class Visualizer:
     def __init__(self, keys, num_samples, func=None):
         self.keys = keys
