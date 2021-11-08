@@ -338,7 +338,7 @@ class FunctionsTestCase(unittest.TestCase):
     def test_scores_to_overall(self):
         scores = {
             "BoolQ": 91.0,
-            "CB" : (98.6, 99.2),
+            "CB": (98.6, 99.2),
             "COPA": 97.4,
             "MultiRC": (88.6, 63.2),
             "ReCoRD": (94.7, 94.2),
@@ -354,7 +354,7 @@ class FunctionsTestCase(unittest.TestCase):
     def test_scores_to_metrics(self):
         scores = {
             "BoolQ": 91.0,
-            "CB" : (98.6, 99.2),
+            "CB": (98.6, 99.2),
             "COPA": 97.4,
             "MultiRC": (88.6, 63.2),
             "ReCoRD": (94.7, 94.2),

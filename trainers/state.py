@@ -5,6 +5,7 @@ import random
 import numpy as np
 import torch
 
+
 class TrainerState:
     def __init__(self, log=None):
         super().__init__()
@@ -83,7 +84,7 @@ class RandomState:
             "torch.random": torch.random.get_rng_state(),
             "torch.cuda.random": torch.cuda.get_rng_state_all(),
         }
-    
+
     def load_state_dict(self, state):
         random.setstate(state["random"])
         np.random.set_state(state["np.random"])

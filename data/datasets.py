@@ -340,6 +340,7 @@ def get_task_datasets(raw_datasets, tasks, mini_val_size):
 
     return task_datasets
 
+
 def get_pretrain_dataset(data_dir, tokenizer):
     path = pathlib.Path(data_dir)
     cached_sizes_path = path / "wiki" / "cached-sizes.npy"
@@ -348,9 +349,14 @@ def get_pretrain_dataset(data_dir, tokenizer):
     else:
         cached_sizes = None
     wiki = load_dataset("wikipedia", "20200501.en")
-    wiki_dataset = WikiDataset(wiki, "train", "text", tokenizer, cached_sizes=cached_sizes)
+    wiki_dataset = WikiDataset(
+        wiki, "train", "text", tokenizer, cached_sizes=cached_sizes
+    )
     return wiki_dataset
 
+
 def get_meta_dataset(pretrain_dataset, task_datasets, split):
-    multi_dataset = MultiTaskDataset([splits[split] for splits in task_datasets.values()])
+    multi_dataset = MultiTaskDataset(
+        [splits[split] for splits in task_datasets.values()]
+    )
     return MetaDataset(pretrain_dataset, multi_dataset)

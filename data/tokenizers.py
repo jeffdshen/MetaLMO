@@ -59,9 +59,7 @@ def get_pretrain_tokenizer(path, model_max_length, **kwargs):
     merges_file = str(pathlib.Path(path, "merges.txt"))
 
     tokenizer = ByteLevelBPETokenizer.from_file(vocab_file, merges_file, **kwargs)
-    tokenizer.enable_truncation(
-        model_max_length, stride=0, strategy="only_first"
-    )
+    tokenizer.enable_truncation(model_max_length, stride=0, strategy="only_first")
     tokenizer.enable_padding(pad_id=tokenizer.token_to_id("[PAD]"))
     tokenizer.post_processor = TemplateProcessing(
         single="[CLS0] $A [SEP]",

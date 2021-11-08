@@ -81,7 +81,7 @@ class RandomStateTestCase(unittest.TestCase):
         self.assertEqual(random.randint(0, 100), a)
         self.assertEqual(torch.randint(0, 100, size=(1,)).item(), b)
         self.assertEqual(np.random.randint(0, 100), c)
-        
+
     def test_state_dict(self):
         x = RandomState(seed=42)
         a_old = random.randint(0, 100)
@@ -100,18 +100,17 @@ class RandomStateTestCase(unittest.TestCase):
         self.assertEqual(np.random.randint(0, 100), c)
 
 
-
 class TrainerStateTestCase(unittest.TestCase):
     def test_reload(self):
         x = TrainerState()
         self.assertFalse(x.is_reloading())
-        obj1 = SimpleState(a = "hello", b = "world")
+        obj1 = SimpleState(a="hello", b="world")
         x.track_object("obj1", obj1)
-        obj2 = SimpleState(a = "foo", c = "bar")
+        obj2 = SimpleState(a="foo", c="bar")
         x.track_object("obj2", obj2)
 
         obj1.c = "!"
-        obj2.d= "baz"
+        obj2.d = "baz"
         state = x.state_dict()
 
         x = TrainerState()

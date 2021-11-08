@@ -95,7 +95,7 @@ def predict_span(idxs, inputs, outputs, pad_id, none_label, span_reduce):
     values, outputs = torch.max(outputs, dim=-1)
 
     # set padding outputs to none_label
-    padding_mask = (inputs == pad_id)
+    padding_mask = inputs == pad_id
     outputs = outputs.masked_fill(padding_mask, none_label)
 
     unique_idxs, counts = idxs.unique_consecutive(dim=0, return_counts=True)
@@ -312,7 +312,9 @@ class ReCoRDTask:
         for e in encodings:
             labels = []
             for id, type_id, (start, end) in zip(e.ids, e.type_ids, e.offsets):
-                label = type_id == 1 and any((i in answer_map) for i in range(start, end))
+                label = type_id == 1 and any(
+                    (i in answer_map) for i in range(start, end)
+                )
                 label = id if label else self.none_label
                 labels.append(label)
             labels_batch.append(labels)
@@ -424,10 +426,8 @@ def get_tasks(tokenizer):
 def scores_to_overall(scores):
     superglue = ["BoolQ", "CB", "COPA", "MultiRC", "ReCoRD", "RTE", "WiC", "WSC"]
     superglue_score = np.mean([np.mean(scores[name]) for name in superglue])
-    return {
-        "Overall": superglue_score,
-        "SuperGLUE": superglue_score
-    }
+    return {"Overall": superglue_score, "SuperGLUE": superglue_score}
+
 
 def scores_to_metrics(scores):
     metrics = scores.copy()
@@ -435,7 +435,7 @@ def scores_to_metrics(scores):
         f1, acc = metrics.pop("CB")
         metrics["CB_F1"] = f1
         metrics["CB_Acc"] = acc
-    
+
     if "MultiRC" in metrics:
         f1a, em = metrics.pop("MultiRC")
         metrics["MultiRC_F1a"] = f1a

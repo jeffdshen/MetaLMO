@@ -250,7 +250,7 @@ def get_padding_mask(x, padding_idx):
 # (N, O) -> (N, K)
 def softmax_sample(x, k, alpha=1.0):
     s = F.softmax(x / alpha, dim=-1)
-    m = torch.multinomial(s.view(-1, s.size(-1)), k, replacement=True) 
+    m = torch.multinomial(s.view(-1, s.size(-1)), k, replacement=True)
     return m.view(s.size(0), k)
 
 

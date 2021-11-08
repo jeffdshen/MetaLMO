@@ -17,9 +17,11 @@ def get_linear_warmup_power_decay_scheduler(
     # a = end_lr - start_lr / (end_step ** power - start_step ** power)
     start_multiplier = 1.0
     start_step = 1
-    scale = (end_multiplier - start_multiplier) / (max_num_steps**power - start_step**power)
+    scale = (end_multiplier - start_multiplier) / (
+        max_num_steps ** power - start_step ** power
+    )
     # b = start_lr - scale * start_step ** power
-    constant = start_multiplier - scale * (start_step**power)
+    constant = start_multiplier - scale * (start_step ** power)
 
     def lr_lambda(step):
         step = start_step + step
@@ -32,4 +34,3 @@ def get_linear_warmup_power_decay_scheduler(
             return scale * (step ** power) + constant
 
     return sched.LambdaLR(optimizer, lr_lambda)
-
