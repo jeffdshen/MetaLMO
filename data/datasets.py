@@ -239,7 +239,7 @@ class TaskCollater:
 
     def __call__(self, examples):
         idxs, features, labels = zip(*examples)
-        idxs = torch.stack(idxs, dim=0)
+        idxs = torch.cat(idxs, dim=0)
         features = [t for f in features for t in f]
         features = pad_sequence(features, batch_first=True, padding_value=self.pad_id)
         labels = [t for l in labels for t in l]
