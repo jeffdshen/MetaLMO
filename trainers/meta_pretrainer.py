@@ -131,12 +131,7 @@ def train(args):
 
     # Set random seed
     rand = RandomState(args.seed)
-    saver = ModelSaver(
-        args.save_dir,
-        metric_names=args.metric_names,
-        maximize_metric=args.maximize_metric,
-        log=log,
-    )
+    saver = config.get_model_saver(args, log)
 
     # Get tokenizers
     pretrain_tokenizer = get_pretrain_tokenizer(args.tokenizer_dir, args.max_positions)
