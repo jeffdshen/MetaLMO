@@ -231,6 +231,8 @@ def train(args):
                     loss, val_scores, preds = evaluate(
                         student.model, val_task_loaders, task_datasets, device, args
                     )
+                    for k in val_scores:
+                        val_scores[k] *= 100
                     overall = scores_to_overall(val_scores)
                     overall["loss"] = loss
                     saver.save(step.sample_num, student.model, overall)
