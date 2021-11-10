@@ -313,8 +313,9 @@ def save_checkpoint(args, state):
     torch.save(checkpoint, checkpoint_path)
 
 
-def reload_checkpoint(args, state, log):
+def reload_checkpoint(args, state, log=None):
     if args.resume_dir:
         checkpoint_path = pathlib.Path(args.resume_dir, "checkpoint.pth.tar")
         state.load_state_dict(torch.load(checkpoint_path))
-        log.info("Resuming from checkpoint: {}".format(checkpoint_path))
+        if log is not None:
+            log.info("Resuming from checkpoint: {}".format(checkpoint_path))
