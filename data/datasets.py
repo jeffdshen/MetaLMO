@@ -209,12 +209,16 @@ class WikiDataset(Dataset):
         for e in encodings:
             for start, end in e.offsets:
                 if j >= start and j < end:
-                    return torch.tensor(e.ids, dtype=torch.long)
+                    idx_tensor = torch.tensor([idx], dtype=torch.long)
+                    return idx_tensor, torch.tensor(e.ids, dtype=torch.long)
 
         assert False
 
     def __len__(self):
         return self.sizes[-1]
+
+    def as_eval_dict(self):
+        return self
 
 
 class MetaDataset(Dataset):
@@ -255,10 +259,22 @@ class SequenceCollater:
         return pad_sequence(examples, batch_first=True, padding_value=self.pad_id)
 
 
+class TupleSequenceCollater:
+    def __init__(self, pad_id):
+        self.pad_id = pad_id
+
+    def __call__(self, examples):
+        sequences = list(zip(*examples))
+        return tuple(
+            pad_sequence(sequence, batch_first=True, padding_value=self.pad_id)
+            for sequence in sequences
+        )
+
+
 class MetaCollater:
     def __init__(self, pad_id):
         self.task_collater = TaskCollater(pad_id)
-        self.sequence_collater = SequenceCollater(pad_id)
+        self.sequence_collater = TupleSequenceCollater(pad_id)
 
     def __call__(self, examples):
         meta_examples, task_examples = zip(*examples)

@@ -211,7 +211,7 @@ def train(args):
         student_tbx(student.model, step.epoch)
 
         with torch.enable_grad(), tqdm(total=len(meta_loader)) as progress_bar:
-            for x_u, (idxs, x_l, y_l) in meta_loader:
+            for (_, x_u), (idxs, x_l, y_l) in meta_loader:
                 x_u = x_u.to(device)
                 x_l = x_l.to(device)
                 y_l = y_l.to(device)
