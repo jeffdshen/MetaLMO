@@ -2,9 +2,11 @@ import random
 import re
 from itertools import groupby
 
+import numpy as np
 import torch
 import torch.nn.functional as F
-import numpy as np
+
+from tokenizers import Tokenizer
 
 from .metrics import metric_accuracy, metric_f1, metric_multirc, metric_record
 
@@ -75,6 +77,14 @@ def predict_argmax_mean(idxs, inputs, outputs, pad_id, labels: Labels):
         idx.item(): labels.from_index(output)
         for idx, output in zip(unique_idxs, outputs)
     }
+
+
+def predict_mlm(idxs, inputs, outputs, pad_id):
+    outputs = torch.argmax(outputs, dim=-1)
+    padding_mask = inputs == pad_id
+    outputs = outputs.masked_fill(padding_mask, pad_id).tolist()
+
+    return {idx.item(): output for idx, output in zip(idxs, outputs)}
 
 
 def split_list(l, delim_pred):
@@ -381,16 +391,131 @@ class MultiRCTask:
         return metric_multirc(preds, examples, strict)
 
 
+def get_random_weights(max_tokens, special_tokens):
+    random_weights = [1] * max_tokens
+    for i in special_tokens:
+        if i >= 0 and i < len(random_weights):
+            random_weights[i] = 0
+    return random_weights
+
+
+class MLMTask:
+    def __init__(
+        self,
+        task_id,
+        tokenizer,
+        mask_id,
+        random_weights,
+        mask_prob,
+        unmask_prob,
+        randomize_prob,
+    ):
+        super().__init__()
+        self.tokenizer = tokenizer
+        self.pad_id = self.tokenizer.padding["pad_id"]
+        self.task_id = task_id
+        self.mask_id = mask_id
+        self.mask_prob = mask_prob
+        self.unmask_prob = unmask_prob
+        self.randomize_prob = randomize_prob
+        self.random_weights = torch.tensor(random_weights, dtype=torch.float)
+
+    def mask1d_(self, x):
+        x = x.detach().clone()
+        x[0] = self.task_id
+        y = x.detach().clone()
+        size = (x != self.pad_id).sum().item()
+        num_mask = int(self.mask_prob * size + random.random())
+
+        masks = torch.tensor(random.sample(range(size), num_mask), dtype=torch.long)
+        change_masks = torch.rand(num_mask)
+        unmask = change_masks < self.unmask_prob
+        random_mask = change_masks < (self.randomize_prob + self.unmask_prob)
+        random_mask = random_mask & (~unmask)
+        if random_mask.sum().item() > 0:
+            random_content = torch.multinomial(
+                self.random_weights, random_mask.sum().item(), replacement=True
+            )
+        else:
+            random_content = torch.tensor([], dtype=torch.long)
+
+        masked = torch.full_like(x, False, dtype=torch.bool)
+        masked[masks] = True
+
+        x[masks[~unmask]] = self.mask_id
+        x[masks[random_mask]] = random_content
+        y[~masked] = self.pad_id
+        x[0] = self.task_id
+        return x, y
+
+    def encode(self, example, window):
+        idx, example = example
+        features, labels = self.mask1d_(example)
+        features = features.unsqueeze(0)
+        labels = labels.unsqueeze(0)
+        return idx, features, labels
+
+    def predict(self, idxs, inputs, outputs):
+        return predict_mlm(idxs, inputs, outputs, self.pad_id)
+
+    def score_single(self, idxs, preds, labels, strict):
+        scores = {}
+        for i, idx in enumerate(idxs.tolist()):
+            label = labels[i]
+
+            if not strict and idx not in preds:
+                continue
+
+            pred = preds[idx]
+            correct = sum([l != self.pad_id and l == p for l, p in zip(label, pred)])
+            total = sum([l != self.pad_id for l in label])
+            if total > 0:
+                scores[idx] = float(correct / total)
+            else:
+                scores[idx] = 1.0
+        return scores
+
+    def score(self, preds, examples, strict):
+        raise NotImplementedError("Can only score single")
+
+
+def get_mlm_task(
+    tokenizer: Tokenizer, mask_prob: float, unmask_prob: float, randomize_prob: float
+) -> MLMTask:
+    task_id = tokenizer.token_to_id("[CLS1]")
+    mask_id = tokenizer.token_to_id("[MASK]")
+    pad_id = tokenizer.token_to_id("[PAD]")
+    max_tokens = tokenizer.get_vocab_size()
+
+    # sep_id is ok to generate for mlm
+    special_tokens = [pad_id, mask_id]
+    for i in range(max_tokens):
+        token = tokenizer.token_to_id("[CLS{}]".format(i))
+        if token is None:
+            break
+        special_tokens.append(token)
+
+    return MLMTask(
+        task_id,
+        tokenizer,
+        mask_id,
+        get_random_weights(max_tokens, special_tokens),
+        mask_prob,
+        unmask_prob,
+        randomize_prob,
+    )
+
+
 def get_tasks(tokenizer):
     task_ids = {
-        "BoolQ": 1,
-        "CB": 2,
-        "COPA": 3,
-        "MultiRC": 4,
-        "ReCoRD": 5,
-        "RTE": 6,
-        "WiC": 7,
-        "WSC": 8,
+        "BoolQ": 2,
+        "CB": 3,
+        "COPA": 4,
+        "MultiRC": 5,
+        "ReCoRD": 6,
+        "RTE": 7,
+        "WiC": 8,
+        "WSC": 9,
     }
     task_ids = {
         k: tokenizer.token_to_id("[CLS{}]".format(v)) for k, v in task_ids.items()
