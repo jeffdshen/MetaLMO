@@ -74,6 +74,10 @@ def get_logger(log_dir, name):
                 self.handleError(record)
 
     logger = logging.getLogger(name)
+    # Check if already set
+    if logger.handlers:
+        return logger
+
     logger.setLevel(logging.DEBUG)
 
     log_path = os.path.join(log_dir, "log.txt")
