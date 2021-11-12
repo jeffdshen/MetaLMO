@@ -221,20 +221,50 @@ class WikiDataset(Dataset):
         return self
 
 
+class PretrainTaskDataset(Dataset):
+    def __init__(self, dataset, task, window, strict):
+        super().__init__()
+        self.dataset = dataset
+        self.task = task
+        self.window = window
+        self.strict = strict
+
+    def __getitem__(self, idx):
+        idxs, features, labels = self.task.encode(self.dataset[idx], self.window)
+        return self.dataset[idx] + (idxs, features.squeeze(0), labels.squeeze(0))
+
+    def __len__(self):
+        return len(self.dataset)
+
+    def predict(self, idxs, inputs, outputs):
+        return self.task.predict(idxs, inputs, outputs)
+
+    def score(self, preds):
+        return self.task.score(preds, self.dataset.as_eval_dict(), self.strict)
+
+
 class MetaDataset(Dataset):
     def __init__(self, pretrain_dataset, multi_dataset):
         self.pretrain_dataset = pretrain_dataset
         self.multi_dataset = multi_dataset
 
     def __getitem__(self, idx):
-        pretrain_idx, multi_idx = idx
-        return self.pretrain_dataset[pretrain_idx], self.multi_dataset[multi_idx]
+        pretrain_idx, multi_idx_s, multi_idx_q = idx
+        return (
+            self.pretrain_dataset[pretrain_idx],
+            self.multi_dataset[multi_idx_s],
+            self.multi_dataset[multi_idx_q],
+        )
 
     def sizes(self):
         return len(self.pretrain_dataset), self.multi_dataset.sizes()
 
     def __len__(self):
-        return len(self.pretrain_dataset) * len(self.multi_dataset)
+        return (
+            len(self.pretrain_dataset)
+            * len(self.multi_dataset)
+            * len(self.multi_dataset)
+        )
 
 
 class TaskCollater:
@@ -277,8 +307,12 @@ class MetaCollater:
         self.sequence_collater = TupleSequenceCollater(pad_id)
 
     def __call__(self, examples):
-        meta_examples, task_examples = zip(*examples)
-        return self.sequence_collater(meta_examples), self.task_collater(task_examples)
+        meta_examples, support_examples, query_examples = zip(*examples)
+        return (
+            self.sequence_collater(meta_examples),
+            self.task_collater(support_examples),
+            self.task_collater(query_examples),
+        )
 
 
 class MetaSampler(Sampler):
@@ -292,8 +326,13 @@ class MetaSampler(Sampler):
         for _ in range(self.num_samples):
             meta_idx = random.randrange(meta_size)
             task_idx = random.randrange(len(multi_sizes))
-            example_idx = random.randrange(multi_sizes[task_idx])
-            items.append((meta_idx, (task_idx, example_idx)))
+            example_idx_s = random.randrange(multi_sizes[task_idx])
+            example_idx_q = random.randrange(multi_sizes[task_idx] - 1)
+            if example_idx_q >= example_idx_s:
+                example_idx_q += 1
+            items.append(
+                (meta_idx, (task_idx, example_idx_s), (task_idx, example_idx_q))
+            )
         for item in items:
             yield item
 

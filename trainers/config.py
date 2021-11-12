@@ -154,6 +154,24 @@ def add_data_args(parser):
     )
 
 
+def add_mlm_args(parser):
+    parser.add_argument(
+        "--mask_prob", type=float, default=0.15, help="Mask probability."
+    )
+    parser.add_argument(
+        "--unmask_prob",
+        type=float,
+        default=0.1,
+        help="Probability to leave mask unchanged.",
+    )
+    parser.add_argument(
+        "--randomize_prob",
+        type=float,
+        default=0.1,
+        help="Probability to use a random token instead of mask.",
+    )
+
+
 def get_available_devices():
     gpu_ids = []
     if torch.cuda.is_available():

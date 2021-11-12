@@ -4,6 +4,7 @@ import os
 import json
 import argparse
 from dataclasses import dataclass
+from tokenizers import Tokenizer
 
 import torch
 import torch.nn as nn
@@ -25,6 +26,7 @@ from trainers.optimizers import NoopOptimizer
 import trainers.config as config
 from data.tokenizers import get_pretrain_tokenizer, get_task_tokenizer
 from data.datasets import (
+    PretrainTaskDataset,
     get_meta_dataset,
     get_pretrain_dataset,
     get_raw_task_datasets,
@@ -33,7 +35,13 @@ from data.datasets import (
     MetaCollater,
     TaskCollater,
 )
-from data.tasks import get_tasks, scores_to_overall, scores_to_metrics
+from data.tasks import (
+    MLMTask,
+    get_mlm_task,
+    get_tasks,
+    scores_to_overall,
+    scores_to_metrics,
+)
 import models.transformer as T
 
 
@@ -46,12 +54,18 @@ def get_task_loader(args, task_dataset):
     )
 
 
-def get_datasets(args, task_tokenizer, pretrain_tokenizer):
+def get_datasets(args, task_tokenizer: Tokenizer, pretrain_tokenizer: Tokenizer):
     raw_datasets = get_raw_task_datasets(args.data_dir)
     tasks = get_tasks(task_tokenizer)
     task_datasets = get_task_datasets(raw_datasets, tasks, mini_val_size=args.val_size)
     pretrain_dataset = get_pretrain_dataset(args.data_dir, pretrain_tokenizer)
-    meta_dataset = get_meta_dataset(pretrain_dataset, task_datasets, "train")
+    mlm_task = get_mlm_task(
+        pretrain_tokenizer, args.mask_prob, args.unmask_prob, args.randomize_prob
+    )
+    pretrain_task_dataset = PretrainTaskDataset(
+        pretrain_dataset, mlm_task, window="random", strict=False
+    )
+    meta_dataset = get_meta_dataset(pretrain_task_dataset, task_datasets, "train")
     meta_sampler = MetaSampler(meta_dataset, args.epoch_size)
     meta_loader = DataLoader(
         dataset=meta_dataset,
@@ -84,10 +98,12 @@ def get_stats(tbx):
             "student.lr",
             "teacher.lr",
             "h",
-            "teacher.loss_l",
+            "teacher.loss_x_m",
+            "teacher.loss_y_m",
             "teacher.loss_u",
             "student.loss0",
             "student.loss1",
+            "student.loss2",
             "steps",
         ],
     )
@@ -211,12 +227,16 @@ def train(args):
         student_tbx(student.model, step.epoch)
 
         with torch.enable_grad(), tqdm(total=len(meta_loader)) as progress_bar:
-            for (_, x_u), (idxs, x_l, y_l) in meta_loader:
+            for (_, x_u, _, x_m, y_m), (_, x_s, y_s), (_, x_q, y_q) in meta_loader:
                 x_u = x_u.to(device)
-                x_l = x_l.to(device)
-                y_l = y_l.to(device)
+                x_m = x_m.to(device)
+                y_m = y_m.to(device)
+                x_s = x_s.to(device)
+                y_s = y_s.to(device)
+                x_q = x_q.to(device)
+                y_q = y_q.to(device)
 
-                info = train_step(x_u, x_l, y_l, student, teacher, args, step)
+                info = train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step)
 
                 # Log info
                 progress_bar.update(1)
@@ -252,7 +272,20 @@ def train(args):
                     # TODO: visualize teacher questions
 
 
-def train_step(x_u, x_l, y_l, student, teacher, args, step, autocast=True):
+def train_step(
+    x_u,
+    x_m,
+    y_m,
+    x_s,
+    y_s,
+    x_q,
+    y_q,
+    student,
+    teacher,
+    args,
+    step,
+    autocast=True,
+):
     info = {}
     batch_size = x_u.size(0)
     info["batch_size"] = batch_size
@@ -275,7 +308,8 @@ def train_step(x_u, x_l, y_l, student, teacher, args, step, autocast=True):
     )
 
     # Student x_hat, y_hat forward, backward pass
-    deltas = [param.data.clone() for param in student.model.parameters()]
+    with torch.no_grad():
+        deltas = [param.data.clone() for param in student.model.parameters()]
     mask_x_hat = T.get_padding_mask(x_hat, args.padding_idx)
     with amp.autocast(enabled=autocast):
         scores = student.model(x_hat, padding_mask=mask_x_hat)
@@ -288,23 +322,50 @@ def train_step(x_u, x_l, y_l, student, teacher, args, step, autocast=True):
     student.scaler.update()
     student.scheduler.step()
     student.optimizer.zero_grad()
-    for delta, param in zip(deltas, student.model.parameters()):
-        delta -= param.data
+    with torch.no_grad():
+        for delta, param in zip(deltas, student.model.parameters()):
+            delta -= param.data
 
     # Student x_l, y_l forward, backward pass, compute h
-    mask_x_l = T.get_padding_mask(x_l, args.padding_idx)
+    orig_param = [param.data.clone() for param in student.model.parameters()]
+    mask_x_s = T.get_padding_mask(x_s, args.padding_idx)
     with amp.autocast(enabled=autocast):
-        scores = student.model(x_l, padding_mask=mask_x_l)
-        loss = student.model.get_loss(scores, y_l, mask_x_l)
+        scores = student.model(x_s, padding_mask=mask_x_s)
+        loss = student.model.get_loss(scores, y_s, mask_x_s)
     info["student.loss1"] = loss.item()
     student.scaler.scale(loss).backward()
     student.scaler.unscale_(student.noop_optimizer)
     nn.utils.clip_grad_norm_(student.model.parameters(), args.max_grad_norm)
+    with torch.no_grad():
+        for param in student.model.parameters():
+            param.data.add_(param.grad, alpha=-args.inner_lr)
     student.scaler.step(student.noop_optimizer)
     student.scaler.update()
-    h = 0.0
-    for delta, param in zip(deltas, student.model.parameters()):
-        h += delta.flatten().dot(param.grad.flatten())
+    student.noop_optimizer.zero_grad()
+
+    mask_x_q = T.get_padding_mask(x_q, args.padding_idx)
+    with amp.autocast(enabled=autocast):
+        scores = student.model(x_q, padding_mask=mask_x_q)
+        loss = student.model.get_loss(scores, y_q, mask_x_q)
+    info["student.loss2"] = loss.item()
+    student.scaler.scale(loss).backward()
+    student.scaler.unscale_(student.noop_optimizer)
+    nn.utils.clip_grad_norm_(student.model.parameters(), args.max_grad_norm)
+    with torch.no_grad():
+        for orig, param in zip(orig_param, student.model.parameters()):
+            param.data = orig.data
+    student.scaler.step(student.noop_optimizer)
+    student.scaler.update()
+
+    with torch.no_grad():
+        h = 0.0
+        delta_norm = 0.0
+        grad_norm = 0.0
+        for delta, param in zip(deltas, student.model.parameters()):
+            h += delta.flatten().dot(param.grad.flatten())
+            delta_norm += (delta ** 2).sum()
+            grad_norm += (param.grad ** 2).sum()
+        h = h / (torch.sqrt(delta_norm) * torch.sqrt(grad_norm))
     student.noop_optimizer.zero_grad()
     info["h"] = h.item()
 
@@ -315,12 +376,18 @@ def train_step(x_u, x_l, y_l, student, teacher, args, step, autocast=True):
         else:
             param.grad += h * grad
 
-    # Teacher on labeled data
-    mask_x_l = T.get_padding_mask(x_l, args.padding_idx)
+    # Train teacher with MLM
+    mask_x_u = T.get_padding_mask(x_u, args.padding_idx)
     with amp.autocast(enabled=autocast):
-        scores_x, scores_y = teacher.model(x_l, padding_mask=mask_x_l)
-        loss = teacher.model.get_loss(scores_x, scores_y, x_l, y_l, mask_x_l, mask_x_l)
-    info["teacher.loss_l"] = loss.item()
+        scores_x, scores_y = teacher.model(x_u, padding_mask=mask_x_u)
+        loss = teacher.model.get_loss(scores_x, scores_y, x_m, y_m, mask_x_u, mask_x_u)
+    info["teacher.loss_x_m"] = loss.item()
+    teacher.scaler.scale(loss / args.gradient_accumulation).backward()
+
+    with amp.autocast(enabled=autocast):
+        scores_x, scores_y = teacher.model(x_m, padding_mask=mask_x_u)
+        loss = teacher.model.get_loss(scores_x, scores_y, x_m, y_m, mask_x_u, mask_x_u)
+    info["teacher.loss_y_m"] = loss.item()
     teacher.scaler.scale(loss / args.gradient_accumulation).backward()
 
     # Teacher optimizer
@@ -378,6 +445,9 @@ def add_train_args(parser):
     config.add_adamw_optimizer_args(parser)
 
     parser.add_argument(
+        "--inner_lr", type=float, default=0.1, help="Inner learning rate for student."
+    )
+    parser.add_argument(
         "--epoch_size", type=int, default=25000, help="Number of samples per epoch."
     )
     parser.add_argument(
@@ -397,5 +467,6 @@ def add_train_args(parser):
 def add_train_test_args(parser):
     config.add_tokenizer_args(parser)
     config.add_data_args(parser)
+    config.add_mlm_args(parser)
     config.add_roberta_args(parser)
     config.add_train_test_args(parser)
