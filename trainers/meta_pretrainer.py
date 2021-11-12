@@ -236,16 +236,24 @@ def train(args):
                 x_q = x_q.to(device)
                 y_q = y_q.to(device)
 
-                info = train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step)
+                info = train_step(
+                    x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step
+                )
 
                 # Log info
                 progress_bar.update(1)
-                progress_bar.set_postfix(epoch=step.epoch, loss=info["student.loss1"])
+                progress_bar.set_postfix(
+                    epoch=step.epoch,
+                    h=info["h"],
+                    teacher_loss=info["teacher.loss_y_m"],
+                    loss=info["student.loss2"],
+                )
                 train_tbx(info, step.sample_num)
 
                 if step.samples_til_eval <= 0:
                     # Evaluate and save checkpoint
                     log.info(f"Evaluating at sample step {step.sample_num}...")
+                    # TODO: log all val losses, include MLM
                     loss, val_scores, preds = evaluate(
                         student.model, val_task_loaders, task_datasets, device, args
                     )
@@ -376,17 +384,22 @@ def train_step(
         else:
             param.grad += h * grad
 
-    # Train teacher with MLM
+    # Train teacher to produce MLM
     mask_x_u = T.get_padding_mask(x_u, args.padding_idx)
+    x_u[:, 0] = x_m[:, 0]
+    # NOTE: T(x_m, y_m | x_u) won't work because they are not independent, 
+    # so we learn T(x_u, x_m | x_u)
     with amp.autocast(enabled=autocast):
         scores_x, scores_y = teacher.model(x_u, padding_mask=mask_x_u)
-        loss = teacher.model.get_loss(scores_x, scores_y, x_m, y_m, mask_x_u, mask_x_u)
+        loss = teacher.model.get_loss(scores_x, scores_y, x_m, x_u, mask_x_u, mask_x_u)
     info["teacher.loss_x_m"] = loss.item()
     teacher.scaler.scale(loss / args.gradient_accumulation).backward()
 
+    # Train teacher with MLM
+    mask_y_m = T.get_padding_mask(y_m, args.padding_idx)
     with amp.autocast(enabled=autocast):
         scores_x, scores_y = teacher.model(x_m, padding_mask=mask_x_u)
-        loss = teacher.model.get_loss(scores_x, scores_y, x_m, y_m, mask_x_u, mask_x_u)
+        loss = teacher.model.get_loss(scores_x, scores_y, x_m, y_m, mask_x_u, mask_y_m)
     info["teacher.loss_y_m"] = loss.item()
     teacher.scaler.scale(loss / args.gradient_accumulation).backward()
 
