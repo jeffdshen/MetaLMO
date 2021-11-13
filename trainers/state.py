@@ -2,6 +2,8 @@
 
 import os
 import random
+from dataclasses import dataclass
+
 import numpy as np
 import torch
 
@@ -90,6 +92,15 @@ class RandomState:
         np.random.set_state(state["np.random"])
         torch.set_rng_state(state["torch.random"])
         torch.cuda.set_rng_state_all(state["torch.cuda.random"])
+
+
+@dataclass
+class ModelState:
+    model = None
+    optimizer = None
+    scheduler = None
+    scaler = None
+    noop_optimizer = None
 
 
 class ModelSaver:

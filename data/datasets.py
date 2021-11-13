@@ -316,16 +316,20 @@ class MetaCollater:
 
 
 class MetaSampler(Sampler):
-    def __init__(self, dataset, num_samples):
+    def __init__(
+        self, dataset: MetaDataset, num_samples: int, samples_per_task: int
+    ):
         self.dataset = dataset
         self.num_samples = num_samples
+        self.samples_per_task = samples_per_task
 
     def __iter__(self):
         items = []
         meta_size, multi_sizes = self.dataset.sizes()
-        for _ in range(self.num_samples):
+        for i in range(self.num_samples):
             meta_idx = random.randrange(meta_size)
-            task_idx = random.randrange(len(multi_sizes))
+            if i % self.samples_per_task == 0:
+                task_idx = random.randrange(len(multi_sizes))
             example_idx_s = random.randrange(multi_sizes[task_idx])
             example_idx_q = random.randrange(multi_sizes[task_idx] - 1)
             if example_idx_q >= example_idx_s:

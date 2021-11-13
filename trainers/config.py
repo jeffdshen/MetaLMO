@@ -6,12 +6,15 @@ import pathlib
 import numpy as np
 import torch
 import torch.optim as optim
-import torch.utils.data as data
 
 import trainers.schedulers as schedulers
 import trainers.stats as stats
 from trainers.state import ModelSaver
 import models
+
+
+def bool_arg(s):
+    return (s.lower().startswith("t"),)
 
 
 def add_special_tokens(args, tokenizer):
@@ -97,7 +100,7 @@ def add_roberta_args(parser):
     )
     parser.add_argument(
         "--prenorm",
-        type=lambda s: s.lower().startswith("t"),
+        type=bool_arg,
         default=False,
         help="Whether to put LayerNorm after the residual or before.",
     )
