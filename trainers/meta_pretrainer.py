@@ -404,6 +404,10 @@ def calc_h_step(student: ModelState, deltas, info):
 
 
 def h_step(teacher: ModelState, teacher_grad, h):
+    # nan or inf or -inf
+    if not (-1 <= h <= 1):
+        return
+    
     for grad, param in zip(teacher_grad, teacher.model.parameters()):
         if param.grad is None:
             param.grad = h * grad
