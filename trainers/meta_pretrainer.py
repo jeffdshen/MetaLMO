@@ -81,7 +81,7 @@ def get_datasets(args, task_tokenizer: Tokenizer, pretrain_tokenizer: Tokenizer)
     return task_datasets, val_task_loaders, meta_dataset, meta_loader
 
 
-def get_stats(tbx):
+def get_stats(tbx, pretrain_tokenizer, args):
     train_tbx = stats.TensorboardScalars(
         tbx,
         "train",
@@ -119,7 +119,13 @@ def get_stats(tbx):
         ],
     )
     student_tbx = stats.TensorboardWeights(tbx, "student")
-    return train_tbx, val_tbx, student_tbx
+    formatter = stats.TokenizedTextFormatter(
+        pretrain_tokenizer, ["x_u", "xhat_u", "yhat_u"]
+    )
+    pseudo_tbx = stats.TensorboardText(
+        tbx, "train", "pseudo", formatter, args.num_visuals
+    )
+    return train_tbx, val_tbx, student_tbx, pseudo_tbx
 
 
 def train(args):
@@ -148,8 +154,9 @@ def train(args):
     config.add_special_tokens(args, pretrain_tokenizer)
 
     # Visualizers
-    # TODO: Visualize teacher questions
-    train_tbx, val_tbx, student_tbx = get_stats(tbx)
+    train_tbx, val_tbx, student_tbx, pseudo_tbx = get_stats(
+        tbx, pretrain_tokenizer, args
+    )
 
     # Get data loader
     log.info("Building dataset...")
@@ -230,6 +237,7 @@ def train(args):
                 info = train_step(
                     x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step
                 )
+                pseudo_tbx.add_all(info["pseudo"])
 
                 # Log info
                 progress_bar.update(1)
@@ -268,7 +276,8 @@ def train(args):
                     metrics.update(overall)
 
                     val_tbx(metrics, step.sample_num)
-                    # TODO: visualize teacher questions
+                    pseudo_tbx(step.sample_num)
+                    pseudo_tbx.clear()
 
 
 def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step):
@@ -297,6 +306,7 @@ def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step):
 
     info["student.lr"] = student.optimizer.param_groups[0]["lr"]
     info["teacher.lr"] = teacher.optimizer.param_groups[0]["lr"]
+    info["pseudo"] = stats.tensors_to_lists((x_u, x_hat, y_hat))
 
     return info
 
@@ -502,6 +512,12 @@ def add_train_args(parser: argparse.ArgumentParser):
         type=int,
         default=12500,
         help="Number of samples between successive evaluations.",
+    )
+    parser.add_argument(
+        "--num_visuals",
+        type=int,
+        default=10,
+        help="Number of examples to visualize in TensorBoard.",
     )
 
 

@@ -1,9 +1,11 @@
 # Copyright (c) Jeffrey Shen
 
-import random
+import collections
 import logging
-import tqdm
 import os
+import random
+
+import tqdm
 
 
 class AverageMeter:
@@ -43,6 +45,56 @@ class TensorboardWeights:
     def __call__(self, model, step):
         for tags, params in model.named_parameters():
             self.tbx.add_histogram("{}/{}".format(self.group, tags), params.data, step)
+
+
+class TensorboardText:
+    def __init__(self, tbx, group, tag, formatter, max_samples):
+        super().__init__()
+        self.tbx = tbx
+        self.group = group
+        self.tag = tag
+        self.max_samples = max_samples
+        self.samples = collections.deque()
+        self.formatter = formatter
+
+    def add_all(self, items):
+        for item in items:
+            self.add(item)
+
+    def add(self, item):
+        self.samples.append(item)
+        if len(self.samples) > self.max_samples:
+            self.samples.popleft()
+
+    def clear(self):
+        self.samples.clear()
+
+    def __call__(self, step):
+        for i, sample in enumerate(self.samples):
+            self.tbx.add_text(
+                "{}/{}_{}_of_{}".format(self.group, self.tag, i + 1, self.max_samples),
+                self.formatter(sample),
+                step,
+            )
+
+
+def tensors_to_lists(tensors):
+    samples = [tensor.tolist() for tensor in tensors]
+    samples = list(zip(*samples))
+    return samples
+
+
+class TokenizedTextFormatter:
+    def __init__(self, tokenizer, keys, skip_special_tokens=False):
+        self.tokenizer = tokenizer
+        self.keys = keys
+        self.skip_special_tokens = skip_special_tokens
+
+    def __call__(self, sample):
+        sample = [self.tokenizer.decode(x, self.skip_special_tokens) for x in sample]
+        keys = ["- **{}:** {{}}".format(x) for x in self.keys]
+        text = "\n".join(k.format(repr(x)) for k, x in zip(keys, sample))
+        return text
 
 
 class Visualizer:
