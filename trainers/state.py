@@ -2,6 +2,7 @@
 
 import os
 import random
+import math
 from dataclasses import dataclass
 
 import numpy as np
@@ -130,6 +131,8 @@ class ModelSaver:
                 continue
             value = results[metric]
             maximize = self.maximize_metric[metric]
+            if math.isnan(value):
+                continue
             if metric in self.best_vals:
                 best_val = self.best_vals[metric]
                 if maximize and best_val >= value:
