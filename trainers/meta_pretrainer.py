@@ -306,7 +306,6 @@ def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step):
 
     info["student.lr"] = student.optimizer.param_groups[0]["lr"]
     info["teacher.lr"] = teacher.optimizer.param_groups[0]["lr"]
-    info["pseudo"] = stats.tensors_to_lists((x_u, x_hat, y_hat))
 
     return info
 
@@ -327,6 +326,7 @@ def sample_step(teacher: ModelState, x_u, args, info):
         teacher.scaler.scale(loss / args.gradient_accumulation),
         teacher.model.parameters(),
     )
+    info["pseudo"] = stats.tensors_to_lists((x_u, x_hat, y_hat))
     return teacher_grad, x_hat, y_hat
 
 
