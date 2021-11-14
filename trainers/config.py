@@ -6,11 +6,27 @@ import pathlib
 import numpy as np
 import torch
 import torch.optim as optim
+from torch.utils.data import DataLoader
+from tokenizers import Tokenizer
 
+import models
+from data.datasets import (
+    MetaCollater,
+    MetaSampler,
+    PretrainTaskDataset,
+    TaskCollater,
+    get_meta_dataset,
+    get_pretrain_dataset,
+    get_raw_task_datasets,
+    get_task_datasets,
+)
+from data.tasks import (
+    get_mlm_task,
+    get_tasks,
+)
 import trainers.schedulers as schedulers
 import trainers.stats as stats
 from trainers.state import ModelSaver
-import models
 
 
 def bool_arg(s):
@@ -25,6 +41,8 @@ def add_special_tokens(args, tokenizer):
 def get_maximize_metric():
     return {
         "loss": False,
+        "loss0": False,
+        "loss2": False,
         "Overall": True,
         "SuperGLUE": True,
     }
@@ -155,6 +173,42 @@ def add_data_args(parser):
         help="Batch size per GPU. Scales automatically when \
                               multiple GPUs are available.",
     )
+
+
+def get_task_loader(args, task_dataset):
+    return DataLoader(
+        dataset=task_dataset,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        collate_fn=TaskCollater(args.padding_idx),
+    )
+
+
+def get_datasets(args, task_tokenizer: Tokenizer, pretrain_tokenizer: Tokenizer):
+    raw_datasets = get_raw_task_datasets(args.data_dir)
+    tasks = get_tasks(task_tokenizer)
+    task_datasets = get_task_datasets(raw_datasets, tasks, mini_val_size=args.val_size)
+    pretrain_dataset = get_pretrain_dataset(args.data_dir, pretrain_tokenizer)
+    mlm_task = get_mlm_task(
+        pretrain_tokenizer, args.mask_prob, args.unmask_prob, args.randomize_prob
+    )
+    pretrain_task_dataset = PretrainTaskDataset(
+        pretrain_dataset, mlm_task, window="random", strict=False
+    )
+    meta_dataset = get_meta_dataset(pretrain_task_dataset, task_datasets, "train")
+    meta_sampler = MetaSampler(meta_dataset, args.epoch_size, args.samples_per_task)
+    meta_loader = DataLoader(
+        dataset=meta_dataset,
+        sampler=meta_sampler,
+        batch_size=args.batch_size,
+        num_workers=args.num_workers,
+        collate_fn=MetaCollater(args.padding_idx),
+    )
+    val_task_loaders = {
+        name: get_task_loader(args, splits["mini_val"])
+        for name, splits in task_datasets.items()
+    }
+    return task_datasets, val_task_loaders, meta_dataset, meta_loader
 
 
 def add_mlm_args(parser):
