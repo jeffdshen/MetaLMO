@@ -121,6 +121,7 @@ def calc_h_step(student: ModelState, deltas, info):
             h += delta.flatten().dot(param.grad.flatten())
             delta_norm += (delta ** 2).sum()
             grad_norm += (param.grad ** 2).sum()
+        info["unscaled_h"] = h.item()
         h = h / (torch.sqrt(delta_norm) * torch.sqrt(grad_norm))
     info["h"] = h.item()
     return h

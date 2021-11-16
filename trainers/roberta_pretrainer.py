@@ -57,6 +57,7 @@ def get_stats(tbx, pretrain_tokenizer, args):
         "train",
         [
             "student.lr",
+            "unscaled_h",
             "h",
             "student.loss0",
             "student.loss1",
