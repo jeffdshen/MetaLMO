@@ -3,9 +3,9 @@ import unittest
 import torch
 import torch.nn.functional as F
 
-from .tasks import get_mlm_task, scores_to_metrics, get_tasks, scores_to_overall
+from .tasks import get_mlm_task
 from .tokenizers import get_fake_tokenizer
-
+import data.config
 
 def setUpModule():
     global tokenizer
@@ -72,7 +72,7 @@ def assert_features(self, features, window, first, second):
 
 class BoolQTest(unittest.TestCase):
     def setUp(self):
-        self.task = get_tasks(tokenizer)["BoolQ"]
+        self.task = data.config.nlp.get_tasks(tokenizer)["BoolQ"]
         self.sep_id = tokenizer.token_to_id("[SEP]")
         self.examples = [
             {
@@ -272,7 +272,7 @@ class FunctionsTestCase(unittest.TestCase):
             "WSC": 97.3,
         }
 
-        overall = scores_to_overall(scores)
+        overall = data.config.nlp.Scorer().scores_to_overall(scores)
         self.assertAlmostEqual(overall["SuperGLUE"], 90.61875)
         self.assertAlmostEqual(overall["Overall"], 90.61875)
 
@@ -287,7 +287,7 @@ class FunctionsTestCase(unittest.TestCase):
             "WiC": 77.4,
             "WSC": 97.3,
         }
-        metrics = scores_to_metrics(scores)
+        metrics = data.config.nlp.Scorer().scores_to_metrics(scores)
         self.assertAlmostEqual(metrics["BoolQ"], 91.0)
         self.assertAlmostEqual(metrics["CB_F1"], 98.6)
         self.assertAlmostEqual(metrics["CB_Acc"], 99.2)

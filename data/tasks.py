@@ -391,6 +391,25 @@ class MultiRCTask:
         return metric_multirc(preds, examples, strict)
 
 
+class WhichMoonTask:
+    def __init__(self, task_id, tokenizer, labels):
+        super().__init__()
+        self.tokenizer = tokenizer
+        self.pad_id = self.tokenizer.padding["pad_id"]
+        self.task_id = task_id
+        self.labels = Labels(labels)
+
+    def encode(self, example, window):
+        encoding = self.tokenizer.encode(example["question"])
+        return prepare_task(self.task_id, example, encoding, self.labels, window)
+
+    def predict(self, idxs, inputs, outputs):
+        return predict_argmax_mean(idxs, inputs, outputs, self.pad_id, self.labels)
+
+    def score(self, preds, examples, strict):
+        return metric_accuracy(preds, examples, strict)
+
+
 def get_random_weights(max_tokens, special_tokens):
     random_weights = [1] * max_tokens
     for i in special_tokens:
@@ -504,71 +523,3 @@ def get_mlm_task(
         unmask_prob,
         randomize_prob,
     )
-
-
-def get_tasks(tokenizer):
-    task_ids = {
-        "BoolQ": 2,
-        "CB": 3,
-        "COPA": 4,
-        "MultiRC": 5,
-        "ReCoRD": 6,
-        "RTE": 7,
-        "WiC": 8,
-        "WSC": 9,
-    }
-    task_ids = {
-        k: tokenizer.token_to_id("[CLS{}]".format(v)) for k, v in task_ids.items()
-    }
-    sep_id = tokenizer.token_to_id("[SEP]")
-    mask_id = tokenizer.token_to_id("[MASK]")
-    labels = {
-        "BoolQ": [(False, sep_id), (True, task_ids["BoolQ"])],
-        "CB": [
-            ("contradiction", sep_id),
-            ("entailment", task_ids["COPA"]),
-            ("neutral", mask_id),
-        ],
-        "COPA": [(0, sep_id), (1, task_ids["COPA"])],
-        "MultiRC": [(0, sep_id), (1, task_ids["MultiRC"])],
-        "ReCoRD": sep_id,
-        "RTE": [("not_entailment", sep_id), ("entailment", task_ids["RTE"])],
-        "WiC": [(False, sep_id), (True, task_ids["WiC"])],
-        "WSC": [(False, sep_id), (True, task_ids["WSC"])],
-    }
-    return {
-        "BoolQ": BoolQTask(task_ids["BoolQ"], tokenizer, labels["BoolQ"]),
-        "CB": CBTask(task_ids["CB"], tokenizer, labels["CB"]),
-        "COPA": COPATask(task_ids["COPA"], tokenizer, labels["COPA"]),
-        "MultiRC": MultiRCTask(task_ids["MultiRC"], tokenizer, labels["MultiRC"]),
-        "ReCoRD": ReCoRDTask(task_ids["ReCoRD"], tokenizer, labels["ReCoRD"]),
-        "RTE": RTETask(task_ids["RTE"], tokenizer, labels["RTE"]),
-        "WiC": WiCTask(task_ids["WiC"], tokenizer, labels["WiC"]),
-        "WSC": WSCTask(task_ids["WSC"], tokenizer, labels["WSC"]),
-    }
-
-
-def scores_to_overall(scores):
-    superglue = ["BoolQ", "CB", "COPA", "MultiRC", "ReCoRD", "RTE", "WiC", "WSC"]
-    superglue_score = np.mean([np.mean(scores[name]) for name in superglue])
-    return {"Overall": superglue_score, "SuperGLUE": superglue_score}
-
-
-def scores_to_metrics(scores):
-    metrics = scores.copy()
-    if "CB" in metrics:
-        f1, acc = metrics.pop("CB")
-        metrics["CB_F1"] = f1
-        metrics["CB_Acc"] = acc
-
-    if "MultiRC" in metrics:
-        f1a, em = metrics.pop("MultiRC")
-        metrics["MultiRC_F1a"] = f1a
-        metrics["MultiRC_EM"] = em
-
-    if "ReCoRD" in metrics:
-        f1, acc = metrics.pop("ReCoRD")
-        metrics["ReCoRD_F1"] = f1
-        metrics["ReCoRD_Acc"] = acc
-
-    return metrics

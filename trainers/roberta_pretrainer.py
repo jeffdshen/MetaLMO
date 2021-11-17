@@ -1,15 +1,10 @@
 # Copyright (c) Jeffrey Shen
 
-import os
 import json
 import argparse
-from tokenizers import Tokenizer
 
 import torch
-import torch.nn as nn
-import torch.autograd as autograd
 import torch.cuda.amp as amp
-from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
@@ -23,22 +18,14 @@ from trainers.state import (
     ModelSaver,
 )
 from trainers.meta_utils import (
-    h_step,
-    mlm_step,
     pseudo_step,
     query_step,
     real_step,
-    sample_step,
     support_step,
     update_step,
 )
 from trainers.optimizers import NoopOptimizer
 import trainers.config as config
-from data.tokenizers import get_pretrain_tokenizer, get_task_tokenizer
-from data.tasks import (
-    scores_to_overall,
-    scores_to_metrics,
-)
 import models.transformer as T
 
 
@@ -91,21 +78,13 @@ def train(args):
     rand = RandomState(args.seed)
     saver = config.get_model_saver(args, log)
 
-    # Get tokenizers
-    pretrain_tokenizer = get_pretrain_tokenizer(args.tokenizer_dir, args.max_positions)
-    task_tokenizer = get_task_tokenizer(
-        args.tokenizer_dir, args.max_positions, args.context_window_stride
-    )
-    config.add_special_tokens(args, pretrain_tokenizer)
-
-    # Visualizers
-    train_tbx, val_tbx, student_tbx, mlm_tbx = get_stats(tbx, pretrain_tokenizer, args)
-
-    # Get data loader
+    # Get tokenizers, data loaders, and visualizers
     log.info("Building dataset...")
+    pretrain_tokenizer, task_tokenizer = config.get_tokenizers(args)
     task_datasets, val_task_loaders, meta_dataset, meta_loader = config.get_datasets(
         args, task_tokenizer, pretrain_tokenizer
     )
+    train_tbx, val_tbx, student_tbx, mlm_tbx = get_stats(tbx, pretrain_tokenizer, args)
 
     # Get model
     student = ModelState()
@@ -127,7 +106,6 @@ def train(args):
         // args.gradient_accumulation
     )
 
-    # TODO: Use the same settings for now
     student.optimizer = config.get_adamw_optimizer(args, student.model)
     student.noop_optimizer = NoopOptimizer(student.model.parameters())
     student.scheduler = config.get_lwpd_scheduler(args, student.optimizer, total_steps)
@@ -270,7 +248,7 @@ def add_train_args(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--eval_per_n_samples",
         type=int,
-        default=5000,
+        default=10000,
         help="Number of samples between successive evaluations.",
     )
     parser.add_argument(

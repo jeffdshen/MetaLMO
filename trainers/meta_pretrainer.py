@@ -28,15 +28,10 @@ from trainers.meta_utils import (
     support_step,
     update_step,
 )
-from data.tokenizers import get_pretrain_tokenizer, get_task_tokenizer
-from data.tasks import (
-    scores_to_overall,
-    scores_to_metrics,
-)
 import models.transformer as T
 
 
-def get_stats(tbx, pretrain_tokenizer, args):
+def get_stats(tbx, pretrain_tokenizer, scorer, args):
     train_tbx = stats.TensorboardScalars(
         tbx,
         "train",
@@ -59,20 +54,9 @@ def get_stats(tbx, pretrain_tokenizer, args):
         "val",
         [
             "loss",
-            "Overall",
-            "SuperGLUE",
-            "BoolQ",
-            "CB_F1",
-            "CB_Acc",
-            "COPA",
-            "MultiRC_F1a",
-            "MultiRC_EM",
-            "ReCoRD_F1",
-            "ReCoRD_Acc",
-            "RTE",
-            "WiC",
-            "WSC",
-        ],
+        ]
+        + scorer.get_overall_names()
+        + scorer.get_metric_names(),
     )
     student_tbx = stats.TensorboardWeights(tbx, "student")
     formatter = stats.TokenizedTextFormatter(
@@ -102,22 +86,15 @@ def train(args):
     rand = RandomState(args.seed)
     saver = config.get_model_saver(args, log)
 
-    # Get tokenizers
-    pretrain_tokenizer = get_pretrain_tokenizer(args.tokenizer_dir, args.max_positions)
-    task_tokenizer = get_task_tokenizer(
-        args.tokenizer_dir, args.max_positions, args.context_window_stride
-    )
-    config.add_special_tokens(args, pretrain_tokenizer)
-
-    # Visualizers
-    train_tbx, val_tbx, student_tbx, pseudo_tbx = get_stats(
-        tbx, pretrain_tokenizer, args
-    )
-
-    # Get data loader
+    # Get tokenizers, data loaders, and visualizers
     log.info("Building dataset...")
+    pretrain_tokenizer, task_tokenizer = config.get_tokenizers(args)
     task_datasets, val_task_loaders, meta_dataset, meta_loader = config.get_datasets(
         args, task_tokenizer, pretrain_tokenizer
+    )
+    scorer = config.get_scorer(args)
+    train_tbx, val_tbx, student_tbx, pseudo_tbx = get_stats(
+        tbx, pretrain_tokenizer, scorer, args
     )
 
     # Get model
@@ -212,7 +189,7 @@ def train(args):
                     loss, val_scores, preds = evaluate(
                         student.model, val_task_loaders, task_datasets, device, args
                     )
-                    overall = scores_to_overall(val_scores)
+                    overall = scorer.scores_to_overall(val_scores)
                     for k in overall:
                         overall[k] *= 100
                     overall["loss"] = loss
@@ -226,7 +203,7 @@ def train(args):
 
                     # Log to TensorBoard
                     log.info("Visualizing in TensorBoard...")
-                    metrics = scores_to_metrics(val_scores)
+                    metrics = scorer.scores_to_metrics(val_scores)
                     for k in metrics:
                         metrics[k] *= 100
                     metrics.update(overall)
@@ -295,7 +272,9 @@ def evaluate(model, val_loaders, task_datasets, device, args):
 def add_train_args(parser: argparse.ArgumentParser):
     add_train_test_args(parser)
     config.add_train_args(parser)
-    config.add_model_saver_args(parser, metric_names=["loss", "Overall", "SuperGLUE"])
+    config.add_model_saver_args(
+        parser, metric_names=["loss"] + config.get_all_dataset_overall_names()
+    )
     config.add_lwpd_scheduler_args(parser)
     config.add_adamw_optimizer_args(parser)
 
@@ -315,7 +294,7 @@ def add_train_args(parser: argparse.ArgumentParser):
         help="How many times to repeat the task before sampling from a different one.",
     )
     parser.add_argument(
-        "--epoch_size", type=int, default=25000, help="Number of samples per epoch."
+        "--epoch_size", type=int, default=20000, help="Number of samples per epoch."
     )
     parser.add_argument(
         "--val_size",
@@ -326,7 +305,7 @@ def add_train_args(parser: argparse.ArgumentParser):
     parser.add_argument(
         "--eval_per_n_samples",
         type=int,
-        default=12500,
+        default=10000,
         help="Number of samples between successive evaluations.",
     )
     parser.add_argument(

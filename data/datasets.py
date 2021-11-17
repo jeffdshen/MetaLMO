@@ -9,7 +9,6 @@ import numpy as np
 import torch
 from torch.utils.data import Dataset, Sampler
 from torch.nn.utils.rnn import pad_sequence
-from datasets import load_dataset
 
 
 class FlatDataset(Dataset):
@@ -221,6 +220,23 @@ class WikiDataset(Dataset):
         return self
 
 
+class FlatPretrainDataset(Dataset):
+    def __init__(self, dataset, tokenizer):
+        self.dataset = dataset
+        self.tokenizer = tokenizer
+
+    def __getitem__(self, idx):
+        idx_tensor = torch.tensor([idx], dtype=torch.long)
+        encoding = self.tokenizer.encode(self.dataset[idx])
+        return idx_tensor, torch.tensor(encoding.ids, dtype=torch.long)
+
+    def __len__(self):
+        return self.dataset
+
+    def as_eval_dict(self):
+        return self
+
+
 class PretrainTaskDataset(Dataset):
     def __init__(self, dataset, task, window, strict):
         super().__init__()
@@ -316,9 +332,7 @@ class MetaCollater:
 
 
 class MetaSampler(Sampler):
-    def __init__(
-        self, dataset: MetaDataset, num_samples: int, samples_per_task: int
-    ):
+    def __init__(self, dataset: MetaDataset, num_samples: int, samples_per_task: int):
         self.dataset = dataset
         self.num_samples = num_samples
         self.samples_per_task = samples_per_task
@@ -354,30 +368,6 @@ def read_splits(path, splits, ext):
     return {split: read_jsonl(pathlib.Path(path, split + ext)) for split in splits}
 
 
-def get_raw_task_datasets(data_dir):
-    path = pathlib.Path(data_dir)
-    glue_splits = ["train", "val", "test"]
-
-    def to_dataset(splits, dataset_class):
-        return {k: dataset_class(v) for k, v in splits.items()}
-
-    def to_glue_dataset(name, dataset_class):
-        return to_dataset(
-            read_splits(path / name, glue_splits, ".jsonl"), dataset_class
-        )
-
-    return {
-        "BoolQ": to_glue_dataset("BoolQ", FlatDataset),
-        "CB": to_glue_dataset("CB", FlatDataset),
-        "COPA": to_glue_dataset("COPA", FlatDataset),
-        "MultiRC": to_glue_dataset("MultiRC", MultiRCDataset),
-        "ReCoRD": to_glue_dataset("ReCoRD", ReCoRDDataset),
-        "RTE": to_glue_dataset("RTE", FlatDataset),
-        "WiC": to_glue_dataset("WiC", FlatDataset),
-        "WSC": to_glue_dataset("WSC", FlatDataset),
-    }
-
-
 def get_task_datasets(raw_datasets, tasks, mini_val_size):
     task_datasets = {}
     for name, splits in raw_datasets.items():
@@ -398,20 +388,6 @@ def get_task_datasets(raw_datasets, tasks, mini_val_size):
             task_datasets[name]["mini_val"] = dataset
 
     return task_datasets
-
-
-def get_pretrain_dataset(data_dir, tokenizer):
-    path = pathlib.Path(data_dir)
-    cached_sizes_path = path / "wiki" / "cached-sizes.npy"
-    if cached_sizes_path.exists():
-        cached_sizes = np.load(cached_sizes_path)
-    else:
-        cached_sizes = None
-    wiki = load_dataset("wikipedia", "20200501.en")
-    wiki_dataset = WikiDataset(
-        wiki, "train", "text", tokenizer, cached_sizes=cached_sizes
-    )
-    return wiki_dataset
 
 
 def get_meta_dataset(pretrain_dataset, task_datasets, split):

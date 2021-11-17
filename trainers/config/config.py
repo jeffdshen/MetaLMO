@@ -6,46 +6,27 @@ import pathlib
 import numpy as np
 import torch
 import torch.optim as optim
-from torch.utils.data import DataLoader
-from tokenizers import Tokenizer
 
 import models
-from data.datasets import (
-    MetaCollater,
-    MetaSampler,
-    PretrainTaskDataset,
-    TaskCollater,
-    get_meta_dataset,
-    get_pretrain_dataset,
-    get_raw_task_datasets,
-    get_task_datasets,
-)
-from data.tasks import (
-    get_mlm_task,
-    get_tasks,
-)
 import trainers.schedulers as schedulers
 import trainers.stats as stats
 from trainers.state import ModelSaver
+
+from .data import get_dataset_maximize_metric
 
 
 def bool_arg(s):
     return (s.lower().startswith("t"),)
 
 
-def add_special_tokens(args, tokenizer):
-    args.ignore_idx = -1
-    args.padding_idx = tokenizer.padding["pad_id"]
-
-
 def get_maximize_metric():
-    return {
+    maximize_metric = {
         "loss": False,
         "loss0": False,
         "loss2": False,
-        "Overall": True,
-        "SuperGLUE": True,
     }
+    maximize_metric.update(get_dataset_maximize_metric())
+    return maximize_metric
 
 
 def get_roberta_model(args, max_tokens):
@@ -144,91 +125,6 @@ def get_teacher_model(args, max_tokens):
     return model
 
 
-def add_tokenizer_args(parser):
-    parser.add_argument(
-        "--max_positions",
-        type=int,
-        default=512,
-        help="Maximum number of tokens.",
-    )
-    parser.add_argument(
-        "--context_window_stride",
-        type=int,
-        default=256,
-        help="Stride for selecting sliding windows from the context.",
-    )
-
-
-def add_data_args(parser):
-    parser.add_argument(
-        "--num_workers",
-        type=int,
-        default=4,
-        help="Number of sub-processes to use per data loader.",
-    )
-    parser.add_argument(
-        "--batch_size",
-        type=int,
-        default=16,
-        help="Batch size per GPU. Scales automatically when \
-                              multiple GPUs are available.",
-    )
-
-
-def get_task_loader(args, task_dataset):
-    return DataLoader(
-        dataset=task_dataset,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        collate_fn=TaskCollater(args.padding_idx),
-    )
-
-
-def get_datasets(args, task_tokenizer: Tokenizer, pretrain_tokenizer: Tokenizer):
-    raw_datasets = get_raw_task_datasets(args.data_dir)
-    tasks = get_tasks(task_tokenizer)
-    task_datasets = get_task_datasets(raw_datasets, tasks, mini_val_size=args.val_size)
-    pretrain_dataset = get_pretrain_dataset(args.data_dir, pretrain_tokenizer)
-    mlm_task = get_mlm_task(
-        pretrain_tokenizer, args.mask_prob, args.unmask_prob, args.randomize_prob
-    )
-    pretrain_task_dataset = PretrainTaskDataset(
-        pretrain_dataset, mlm_task, window="random", strict=False
-    )
-    meta_dataset = get_meta_dataset(pretrain_task_dataset, task_datasets, "train")
-    meta_sampler = MetaSampler(meta_dataset, args.epoch_size, args.samples_per_task)
-    meta_loader = DataLoader(
-        dataset=meta_dataset,
-        sampler=meta_sampler,
-        batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        collate_fn=MetaCollater(args.padding_idx),
-    )
-    val_task_loaders = {
-        name: get_task_loader(args, splits["mini_val"])
-        for name, splits in task_datasets.items()
-    }
-    return task_datasets, val_task_loaders, meta_dataset, meta_loader
-
-
-def add_mlm_args(parser):
-    parser.add_argument(
-        "--mask_prob", type=float, default=0.15, help="Mask probability."
-    )
-    parser.add_argument(
-        "--unmask_prob",
-        type=float,
-        default=0.1,
-        help="Probability to leave mask unchanged.",
-    )
-    parser.add_argument(
-        "--randomize_prob",
-        type=float,
-        default=0.1,
-        help="Probability to use a random token instead of mask.",
-    )
-
-
 def get_available_devices():
     gpu_ids = []
     if torch.cuda.is_available():
@@ -325,15 +221,6 @@ def add_train_test_args(parser):
         type=str,
         default="./save/runs/",
         help="Base directory for saving runs.",
-    )
-    parser.add_argument(
-        "--data_dir", type=str, default="./save/data/", help="Base directory for data"
-    )
-    parser.add_argument(
-        "--tokenizer_dir",
-        type=str,
-        default="./save/tokenizers/wiki-bpe/",
-        help="Base directory for tokenizers",
     )
     parser.add_argument(
         "--load_path",
