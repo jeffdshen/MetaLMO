@@ -15,7 +15,6 @@ from trainers.state import (
     RandomState,
     SimpleState,
     ModelState,
-    ModelSaver,
 )
 from trainers.optimizers import NoopOptimizer
 import trainers.config as config
@@ -52,11 +51,7 @@ def get_stats(tbx, pretrain_tokenizer, scorer, args):
     val_tbx = stats.TensorboardScalars(
         tbx,
         "val",
-        [
-            "loss",
-        ]
-        + scorer.get_overall_names()
-        + scorer.get_metric_names(),
+        ["loss"] + scorer.get_overall_names() + scorer.get_metric_names(),
     )
     student_tbx = stats.TensorboardWeights(tbx, "student")
     formatter = stats.TokenizedTextFormatter(

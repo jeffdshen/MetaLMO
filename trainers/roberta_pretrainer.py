@@ -15,7 +15,6 @@ from trainers.state import (
     RandomState,
     SimpleState,
     ModelState,
-    ModelSaver,
 )
 from trainers.meta_utils import (
     pseudo_step,
@@ -117,7 +116,11 @@ def train(args):
 
     # Train
     step = SimpleState(
-        epoch=0, step_num=0, sample_num=0, samples_til_eval=args.eval_per_n_samples
+        epoch=0,
+        step_num=0,
+        sample_num=0,
+        samples_til_log=args.log_per_n_samples,
+        samples_til_eval=args.eval_per_n_samples,
     )
     state.track_object("step", step)
     state.track_object("random", rand)
@@ -142,7 +145,7 @@ def train(args):
                 x_q = x_q.to(device)
                 y_q = y_q.to(device)
 
-                if step.samples_til_eval > 0:
+                if step.samples_til_log > 0:
                     info = train_step(
                         x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, args, step
                     )
@@ -150,7 +153,7 @@ def train(args):
                     train_tbx(info, step.sample_num)
                 else:
                     log.info(f"Evaluating at sample step {step.sample_num}...")
-                    info = eval_step(
+                    info = log_step(
                         x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, args, step
                     )
                     overall = {
@@ -167,6 +170,8 @@ def train(args):
 
                     log.info("Visualizing in TensorBoard...")
                     val_tbx(info, step.sample_num)
+
+                if step.samples_til_eval <= 0:
                     mlm_tbx(step.sample_num)
                     mlm_tbx.clear()
 
@@ -189,12 +194,16 @@ def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, args, step):
     # Step student
     update_step(student, step, batch_size, args, info)
 
+    if step.samples_til_log <= 0:
+        step.samples_til_log = args.log_per_n_samples
+    step.samples_til_log -= batch_size
+
     info["student.lr"] = student.optimizer.param_groups[0]["lr"]
 
     return info
 
 
-def eval_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, args, step):
+def log_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, args, step):
     info = {}
     batch_size = x_u.size(0)
     info["batch_size"] = batch_size
@@ -208,6 +217,9 @@ def eval_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, args, step):
 
     # Step student
     update_step(student, step, batch_size, args, info)
+    if step.samples_til_log <= 0:
+        step.samples_til_log = args.log_per_n_samples
+    step.samples_til_log -= batch_size
 
     info["student.lr"] = student.optimizer.param_groups[0]["lr"]
 
@@ -244,6 +256,12 @@ def add_train_args(parser: argparse.ArgumentParser):
         type=int,
         default=128,
         help="Number of samples per task for validation.",
+    )
+    parser.add_argument(
+        "--log_per_n_samples",
+        type=int,
+        default=1000,
+        help="Number of samples between h evaluations",
     )
     parser.add_argument(
         "--eval_per_n_samples",

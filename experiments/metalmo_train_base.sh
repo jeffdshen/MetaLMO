@@ -8,9 +8,7 @@ command=(
     --name=meta_pretrain
     --batch_size=4
     --prenorm=True
-    --num_epochs=100
-    --epoch_size=20000
-    --eval_per_n_samples=10000
+    --num_epochs=1000
     --metric_names loss Overall
     --lr=0.01
 )

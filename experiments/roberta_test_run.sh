@@ -17,6 +17,7 @@ command=(
     --lr=0.008
     --epoch_size=64
     --val_size=16
+    --log_per_n_samples=16
     --eval_per_n_samples=32
 )
 echo ${command[@]}
