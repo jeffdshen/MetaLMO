@@ -64,13 +64,7 @@ def real_step(student: ModelState, x_m, y_m, args, info):
         )
         y_hat = y_hat.squeeze(0)
     info["student.loss0"] = loss.item()
-    student.scaler.scale(loss).backward()
-    student.scaler.unscale_(student.optimizer)
-    nn.utils.clip_grad_norm_(student.model.parameters(), args.max_grad_norm)
-    student.scaler.step(student.optimizer)
-    student.scaler.update()
-    student.scheduler.step()
-    student.optimizer.zero_grad()
+    student.scaler.scale(loss / args.gradient_accumulation).backward()
     info["mlm"] = stats.tensors_to_lists((x_m, y_m, y_hat))
 
 

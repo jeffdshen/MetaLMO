@@ -145,17 +145,15 @@ def train(args):
                 x_q = x_q.to(device)
                 y_q = y_q.to(device)
 
-                if step.samples_til_log > 0:
-                    info = train_step(
-                        x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, args, step
-                    )
-                    mlm_tbx.add_all(info["mlm"])
+                info = train_step(
+                    x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, args, step
+                )
+                mlm_tbx.add_all(info["mlm"])
+                if "h" not in info:
                     train_tbx(info, step.sample_num)
                 else:
                     log.info(f"Evaluating at sample step {step.sample_num}...")
-                    info = log_step(
-                        x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, args, step
-                    )
+                    # TODO: Use validation loss instead
                     overall = {
                         "loss0": info["student.loss0"],
                         "loss2": info["student.loss2"],
@@ -192,33 +190,22 @@ def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, args, step):
     real_step(student, x_m, y_m, args, info)
 
     # Step student
-    update_step(student, step, batch_size, args, info)
+    if step.samples_til_log <= 0 and (step.step_num + 1) % args.gradient_accumulation == 0:
+        with torch.no_grad():
+            deltas = [param.data.clone() for param in student.model.parameters()]
+        update_step(student, step, batch_size, args, info)
+        with torch.no_grad():
+            for delta, param in zip(deltas, student.model.parameters()):
+                delta -= param.data
 
-    if step.samples_til_log <= 0:
+        # Student x_l, y_l forward, backward pass, compute h
+        orig_param = support_step(student, x_s, y_s, args, info)
+        _ = query_step(student, x_q, y_q, orig_param, deltas, args, info)
+
         step.samples_til_log = args.log_per_n_samples
-    step.samples_til_log -= batch_size
+    else:
+        update_step(student, step, batch_size, args, info)
 
-    info["student.lr"] = student.optimizer.param_groups[0]["lr"]
-
-    return info
-
-
-def log_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, args, step):
-    info = {}
-    batch_size = x_u.size(0)
-    info["batch_size"] = batch_size
-
-    # Student x_hat, y_hat forward, backward pass
-    deltas = pseudo_step(student, x_m, y_m, args, info)
-
-    # Student x_l, y_l forward, backward pass, compute h
-    orig_param = support_step(student, x_s, y_s, args, info)
-    h = query_step(student, x_q, y_q, orig_param, deltas, args, info)
-
-    # Step student
-    update_step(student, step, batch_size, args, info)
-    if step.samples_til_log <= 0:
-        step.samples_til_log = args.log_per_n_samples
     step.samples_til_log -= batch_size
 
     info["student.lr"] = student.optimizer.param_groups[0]["lr"]
