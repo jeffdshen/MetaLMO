@@ -231,7 +231,7 @@ class FlatPretrainDataset(Dataset):
         return idx_tensor, torch.tensor(encoding.ids, dtype=torch.long)
 
     def __len__(self):
-        return self.dataset
+        return len(self.dataset)
 
     def as_eval_dict(self):
         return self
