@@ -103,10 +103,14 @@ def get_tasks(tokenizer):
 
 
 class Scorer:
+    dataset_names = ["BoolQ", "CB", "COPA", "MultiRC", "ReCoRD", "RTE", "WiC", "WSC"]
+
     @staticmethod
     def scores_to_overall(scores):
         superglue = ["BoolQ", "CB", "COPA", "MultiRC", "ReCoRD", "RTE", "WiC", "WSC"]
-        superglue_score = np.mean([np.mean(scores[name]) for name in superglue])
+        superglue_score = np.mean(
+            [np.mean(scores[name]) for name in superglue if name in scores]
+        )
         return {"Overall": superglue_score, "SuperGLUE": superglue_score}
 
     @staticmethod
@@ -140,18 +144,22 @@ class Scorer:
             "SuperGLUE": True,
         }
 
+    @classmethod
+    def get_dataset_names(cls):
+        return cls.dataset_names
+
     @staticmethod
-    def get_metric_names():
-        return [
-            "BoolQ",
-            "CB_F1",
-            "CB_Acc",
-            "COPA",
-            "MultiRC_F1a",
-            "MultiRC_EM",
-            "ReCoRD_F1",
-            "ReCoRD_Acc",
-            "RTE",
-            "WiC",
-            "WSC",
-        ]
+    def get_metric_names(score_names=dataset_names):
+        metrics = []
+        metrics_map = {
+            "CB": ["CB_F1", "CB_Acc"],
+            "MultiRC": ["MultiRC_F1a", "MultiRC_EM"],
+            "ReCoRD": ["ReCoRD_F1", "ReCoRD_Acc"],
+        }
+        for name in score_names:
+            if name in metrics_map:
+                metrics += metrics_map[name]
+            else:
+                metrics.append(name)
+
+        return metrics

@@ -88,10 +88,14 @@ def get_tasks(tokenizer):
 
 
 class Scorer:
+    dataset_names = ["Which_MOON"]
+
     @staticmethod
     def scores_to_overall(scores):
         moons = ["Which_MOON"]
-        moons_score = np.mean([np.mean(scores[name]) for name in moons])
+        moons_score = np.mean(
+            [np.mean(scores[name]) for name in moons if name in scores]
+        )
         return {"Overall": moons_score, "TWO_MOONS": moons_score}
 
     @staticmethod
@@ -110,8 +114,18 @@ class Scorer:
             "TWO_MOONS": True,
         }
 
+    @classmethod
+    def get_dataset_names(cls):
+        return cls.dataset_names
+
     @staticmethod
-    def get_metric_names():
-        return [
-            "Which_MOON"
-        ]
+    def get_metric_names(score_names=dataset_names):
+        metrics = []
+        metrics_map = {}
+        for name in score_names:
+            if name in metrics_map:
+                metrics += metrics_map[name]
+            else:
+                metrics.append(name)
+
+        return metrics
