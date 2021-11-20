@@ -4,6 +4,7 @@ import collections
 import logging
 import os
 import random
+from torch.utils.data.dataset import T
 
 import tqdm
 
@@ -82,6 +83,15 @@ def tensors_to_lists(tensors):
     samples = [tensor.tolist() for tensor in tensors]
     samples = list(zip(*samples))
     return samples
+
+
+def tensors_groupby_flatten(idxs, tensors):
+    unique_idxs, counts = idxs.unique_consecutive(dim=0, return_counts=True)
+    tensors = [[t.flatten().tolist() for t in tensor.split(counts.tolist())] for tensor in tensors]
+    return {
+        idx.item(): items
+        for idx, items in zip(unique_idxs, list(zip(*tensors)))
+    }
 
 
 class TokenizedTextFormatter:
