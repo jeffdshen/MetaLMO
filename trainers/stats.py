@@ -138,24 +138,6 @@ class JoinTextFormatter:
         return sum(len(formatter) for formatter in self.formatters)
 
 
-class Visualizer:
-    def __init__(self, keys, num_samples, func=None):
-        self.keys = keys
-        self.num_samples = num_samples
-        self.func = func
-
-    def sample(self, items):
-        items = random.sample(items, k=max(0, min(self.num_samples, len(items))))
-        if self.func is not None:
-            items = [tuple(self.func(x) for x in sample) for sample in items]
-        keys = ["- **{}:** {{}}".format(x) for x in self.keys]
-        items = [
-            "\n".join(keys[i].format(x) for i, x in enumerate(sample))
-            for sample in items
-        ]
-        return items
-
-
 def get_logger(log_dir, name):
     class TqdmStreamHandler(logging.Handler):
         def emit(self, record):
