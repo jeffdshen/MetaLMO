@@ -217,6 +217,9 @@ def add_train_test_args(parser):
         help="Name to identify training or test run.",
     )
     parser.add_argument(
+        "--seed", type=int, default=42, help="Seed for all random generators."
+    )
+    parser.add_argument(
         "--save_dir",
         type=str,
         default="./save/runs/",
@@ -236,9 +239,6 @@ def add_train_args(parser):
         type=str,
         default=None,
         help="Path to trainer checkpoint.",
-    )
-    parser.add_argument(
-        "--seed", type=int, default=42, help="Seed for all random generators."
     )
     parser.add_argument(
         "--num_epochs",
