@@ -96,6 +96,37 @@ class TokenizedTextFormatter:
         text = "\n".join(k.format(repr(x)) for k, x in zip(keys, sample))
         return text
 
+    def __len__(self):
+        return len(self.keys)
+    
+class StrTextFormatter:
+    def __init__(self, keys):
+        self.keys = keys
+
+    def __call__(self, sample):
+        keys = ["- **{}:** {{}}".format(x) for x in self.keys]
+        text = "\n".join(k.format(repr(x)) for k, x in zip(keys, sample))
+        return text
+
+    def __len__(self):
+        return len(self.keys)
+
+
+class JoinTextFormatter:
+    def __init__(self, formatters):
+        self.formatters = formatters
+
+    def __call__(self, sample):
+        i = 0
+        texts = []
+        for formatter in self.formatters:
+            texts.append(formatter(sample[i:i + len(formatter)]))
+            i += len(formatter)
+        return "\n".join(texts)
+
+    def __len__(self):
+        return sum(len(formatter) for formatter in self.formatters)
+
 
 class Visualizer:
     def __init__(self, keys, num_samples, func=None):
