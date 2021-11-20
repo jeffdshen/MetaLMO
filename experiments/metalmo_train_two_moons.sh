@@ -1,7 +1,6 @@
 #!/bin/bash
 
 # Two moon version run of metalmo
-# Uses about 10.871G out of 16.160G
 
 command=(
     python run.py meta_pretrain

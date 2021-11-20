@@ -1,9 +1,9 @@
 #!/bin/bash
 
-# Run a light version of RoBERTa for testing purposes
+# Run a light version of finetuning for testing purposes
 
 command=(
-    python run.py roberta_pretrain
+    python run.py finetune
     --dim=32
     --n_heads=2
     --ff_dim=128
@@ -12,14 +12,12 @@ command=(
     --prenorm=True
     --name=test_run
     --num_epochs=2
-    --metric_names=loss0
+    --metric_names=loss
     --warmup_steps=100
-    --lr=0.008
-    --epoch_size=64
+    --lr=0.004
     --val_size=16
-    --log_per_n_samples=16
     --eval_per_n_samples=32
+    --task=COPA
 )
 echo ${command[@]}
 ${command[@]}
-

@@ -28,12 +28,13 @@ def get_tokenizers(args):
     return pretrain_tokenizer, task_tokenizer
 
 
-def get_task_loader(args, task_dataset):
+def get_task_loader(args, task_dataset, shuffle):
     return DataLoader(
         dataset=task_dataset,
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         collate_fn=TaskCollater(args.padding_idx),
+        shuffle=shuffle,
     )
 
 
@@ -67,10 +68,33 @@ def get_datasets(args, task_tokenizer: Tokenizer, pretrain_tokenizer: Tokenizer)
         collate_fn=MetaCollater(args.padding_idx),
     )
     val_task_loaders = {
-        name: get_task_loader(args, splits["mini_val"])
+        name: get_task_loader(args, splits["mini_val"], shuffle=False)
         for name, splits in task_datasets.items()
     }
     return task_datasets, val_task_loaders, meta_dataset, meta_loader
+
+
+def get_finetune_datasets(args, task_tokenizer: Tokenizer):
+    if args.dataset == "nlp":
+        data_config = data.config.nlp
+        data_dir = args.data_dir
+    elif args.dataset == "two_moons":
+        data_config = data.config.two_moons
+        data_dir = data_config.get_raw_data()
+    else:
+        raise ValueError("Unrecognized dataset: {}".format(args.dataset))
+
+    raw_datasets = data_config.get_raw_task_datasets(data_dir)
+    tasks = data_config.get_tasks(task_tokenizer)
+    task_datasets = get_task_datasets(raw_datasets, tasks, mini_val_size=args.val_size)
+    task_loaders = {
+        name: {
+            split: get_task_loader(args, dataset, shuffle=(split != "train"))
+            for split, dataset in splits.items()
+        }
+        for name, splits in task_datasets.items()
+    }
+    return task_datasets, task_loaders
 
 
 def get_scorer(args):
