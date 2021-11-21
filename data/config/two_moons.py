@@ -7,7 +7,7 @@ from data.tasks import WhichMoonTask
 
 def gen_moons(n_samples):
     x, labels = sklearn.datasets.make_moons(
-        n_samples=n_samples, shuffle=True, noise=0.15, random_state=42
+        n_samples=n_samples, shuffle=True, noise=0.10, random_state=42
     )
     x, y = x[:, 0], x[:, 1]
     x = np.interp(x, (-1.5, 2.5), (0, 99.99)).astype(int)
@@ -38,15 +38,15 @@ def gen_which_moon(x, y, labels, start, end):
 
 
 def get_raw_data():
-    x, y, labels = gen_moons(100_000)
+    x, y, labels = gen_moons(1_000_000)
     all_x, all_y = np.meshgrid(np.arange(0, 100), np.arange(0, 100))
     all_x, all_y = all_x.flatten(), all_y.flatten()
     data = {}
-    data["TWO_MOONS"] = gen_sequences(x, y, labels, 0, 51200, 16)
+    data["TWO_MOONS"] = gen_sequences(x, y, labels, 0, 512000, 16)
 
     data["Which_MOON"] = {}
-    data["Which_MOON"]["train"] = gen_which_moon(x, y, labels, 51200, 51210)
-    data["Which_MOON"]["val"] = gen_which_moon(x, y, labels, 51220, 51230)
+    data["Which_MOON"]["train"] = gen_which_moon(x, y, labels, 512010, 512020)
+    data["Which_MOON"]["val"] = gen_which_moon(x, y, labels, 512030, 512040)
     data["Which_MOON"]["test"] = gen_which_moon(
         all_x, all_y, np.zeros_like(all_x), 0, 10000
     )
