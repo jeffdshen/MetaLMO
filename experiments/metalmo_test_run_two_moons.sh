@@ -5,7 +5,7 @@
 command=(
     python run.py meta_pretrain
     --name=meta_pretrain_two_moons
-    --max_positions 34
+    --max_positions 130
     --context_window_stride 0
     --tokenizer_dir=save/tokenizers/two-moons
     --dataset=two_moons

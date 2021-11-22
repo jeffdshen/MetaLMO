@@ -7,15 +7,20 @@ from data.tasks import WhichMoonTask
 from .util import add_all_to_overall, add_mean_to_overall, add_suffix
 
 
+def to_str(num, base, length):
+    s = np.base_repr(num, base=base, padding=length)
+    return s[-length:]
+
+
 def gen_moons(n_samples):
     x, labels = sklearn.datasets.make_moons(
         n_samples=n_samples, shuffle=True, noise=0.10, random_state=42
     )
     x, y = x[:, 0], x[:, 1]
-    x = np.interp(x, (-1.5, 2.5), (0, 99.99)).astype(int)
-    x = np.clip(x, 0, 99)
-    y = np.interp(y, (-1.0, 1.5), (0, 99.99)).astype(int)
-    y = np.clip(y, 0, 99)
+    x = np.interp(x, (-1.5, 2.5), (0, 63.99)).astype(int)
+    x = np.clip(x, 0, 63)
+    y = np.interp(y, (-1.0, 1.5), (0, 63.99)).astype(int)
+    y = np.clip(y, 0, 63)
     return x, y, labels
 
 
@@ -26,7 +31,7 @@ def gen_sequences(x, y, labels, start, end, seq_size):
     for i in range(start, end, seq_size):
         xy = np.stack((x[i : i + seq_size], y[i : i + seq_size]), axis=-1)
         xy = np.array(sorted(xy.tolist()))
-        seq = " ".join(str(p) for p in xy.flatten().tolist())
+        seq = " ".join(to_str(p, base=4, length=3) for p in xy.flatten().tolist())
         seqs.append(seq)
     return seqs
 
@@ -34,7 +39,7 @@ def gen_sequences(x, y, labels, start, end, seq_size):
 def gen_which_moon(x, y, labels, start, end):
     examples = []
     for i in range(start, end):
-        seq = " ".join([str(x[i]), str(y[i])])
+        seq = " ".join([to_str(p, base=4, length=3) for p in [x[i], y[i]]])
         examples.append({"idx": (i - start), "question": seq, "label": labels[i]})
     return examples
 
@@ -63,7 +68,7 @@ def get_pretrain_datasets(data, tokenizer, mini_val_size):
     mini_val_dataset = MiniDataset(val_dataset, mini_val_size)
     return {
         "train": FlatPretrainDataset(data["TWO_MOONS"]["train"], tokenizer),
-        "val":  val_dataset,
+        "val": val_dataset,
         "mini_val": mini_val_dataset,
     }
 
