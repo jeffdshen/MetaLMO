@@ -80,11 +80,7 @@ def predict_argmax_mean(idxs, inputs, outputs, pad_id, labels: Labels):
 
 
 def predict_mlm(idxs, inputs, outputs, pad_id):
-    max_tokens = outputs.size(-1)
     outputs = torch.argmax(outputs, dim=-1)
-    # NOTE: Assumes pad_id is not the only token.
-    invalid_id = (pad_id + 1) % max_tokens
-    outputs[outputs == pad_id] = invalid_id
     padding_mask = inputs == pad_id
     outputs = outputs.masked_fill(padding_mask, pad_id).tolist()
 
@@ -481,25 +477,25 @@ class MLMTask:
     def predict(self, idxs, inputs, outputs):
         return predict_mlm(idxs, inputs, outputs, self.pad_id)
 
-    def score(self, preds, examples, strict):
+    def score_single(self, idxs, preds, labels, strict):
         scores = {}
-        if strict:
-            idxs = range(len(examples))
-        else:
-            idxs = preds
+        for i, idx in enumerate(idxs.tolist()):
+            label = labels[i]
 
-        for idx in idxs:
-            _, label = examples[idx]
+            if not strict and idx not in preds:
+                continue
+
             pred = preds[idx]
-            # NOTE: Trust the pad_id tokens from pred, since we have no way of recovering
-            # this from the original examples.
-            correct = sum([p != self.pad_id and l == p for l, p in zip(label.tolist(), pred)])
-            total = sum([p != self.pad_id for p in pred])
+            correct = sum([l != self.pad_id and l == p for l, p in zip(label, pred)])
+            total = sum([l != self.pad_id for l in label])
             if total > 0:
                 scores[idx] = float(correct / total)
             else:
                 scores[idx] = 1.0
-        return np.mean(list(scores.values()))
+        return scores
+
+    def score(self, preds, examples, strict):
+        raise NotImplementedError("Can only score single")
 
 
 def get_mlm_task(

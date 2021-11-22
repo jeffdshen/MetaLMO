@@ -156,6 +156,12 @@ class TaskDataset(Dataset):
     def predict(self, idxs, inputs, outputs):
         return self.task.predict(idxs, inputs, outputs)
 
+    def score_single(self, idxs, preds, labels):
+        if not hasattr(self.task, "score_single"):
+            return None
+
+        return self.task.score_single(idxs, preds, labels, self.strict)
+
     def score(self, preds):
         return self.task.score(preds, self.dataset.as_eval_dict(), self.strict)
 
@@ -178,13 +184,24 @@ class MultiTaskDataset(Dataset):
 
 
 class WikiDataset(Dataset):
-    def __init__(self, dataset, split, column, tokenizer, cached_sizes=None, num_proc=16, len_column="len"):
+    def __init__(
+        self,
+        dataset,
+        split,
+        column,
+        tokenizer,
+        cached_sizes=None,
+        num_proc=16,
+        len_column="len",
+    ):
         self.dataset = dataset
         self.split = split
         self.column = column
         self.tokenizer = tokenizer
         if cached_sizes is None:
-            self.sizes = WikiDataset._compute_sizes(dataset, split, column, len_column, num_proc)
+            self.sizes = WikiDataset._compute_sizes(
+                dataset, split, column, len_column, num_proc
+            )
         else:
             self.sizes = cached_sizes
         self.num_proc = num_proc
@@ -294,6 +311,12 @@ class PretrainTaskDataset(Dataset):
 
     def predict(self, idxs, inputs, outputs):
         return self.task.predict(idxs, inputs, outputs)
+
+    def score_single(self, idxs, preds, labels):
+        if not hasattr(self.task, "score_single"):
+            return None
+
+        return self.task.score_single(idxs, preds, labels, self.strict)
 
     def score(self, preds):
         return self.task.score(preds, self.dataset.as_eval_dict(), self.strict)

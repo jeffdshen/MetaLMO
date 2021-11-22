@@ -1,5 +1,6 @@
 # Copyright (c) Jeffrey Shen
 
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.autograd as autograd
@@ -192,6 +193,7 @@ def evaluate(model, loaders, datasets, names, split, device, args):
             preds[name] = {}
             tensors[name] = {}
             loss_meters[name] = stats.AverageMeter()
+            single_scores = {}
             for idxs, x, y in loaders[name][split]:
                 batch_size = x.size(0)
                 x, y = x.to(device), y.to(device)
@@ -203,7 +205,14 @@ def evaluate(model, loaders, datasets, names, split, device, args):
                 pred = datasets[name][split].predict(idxs, x, scores)
                 preds[name].update(pred)
                 tensors[name].update(stats.tensors_groupby_flatten(idxs, [x, y]))
-            val_scores[name] = datasets[name][split].score(preds[name])
+
+                single_score = datasets[name][split].score_single(idxs, pred, y)
+                if single_score is not None:
+                    single_scores.update(single_score)
+            if single_scores:
+                val_scores[name] = np.mean(list(single_scores.values()))
+            else:
+                val_scores[name] = datasets[name][split].score(preds[name])
 
     model.train()
     losses = {name: loss_meter.avg for name, loss_meter in loss_meters.items()}
@@ -213,7 +222,10 @@ def evaluate(model, loaders, datasets, names, split, device, args):
 
 def cat_pred_examples(tensors, preds):
     return {
-        name: [[idx] + list(tensors[name][idx]) + [preds[name][idx]] for idx in tensors[name]]
+        name: [
+            [idx] + list(tensors[name][idx]) + [preds[name][idx]]
+            for idx in tensors[name]
+        ]
         for name in tensors
     }
 
@@ -224,9 +236,7 @@ def score_evaluate(scorer, val_scores, losses):
     val_scores.update({k + "_loss": v for k, v in losses.items()})
     overall = scorer.scores_to_overall(val_scores)
 
-    overall_str = ", ".join(
-        f"{k}: {v:05.2f}" for k, v in overall.items()
-    )
+    overall_str = ", ".join(f"{k}: {v:05.2f}" for k, v in overall.items())
 
     metrics = scorer.scores_to_metrics(val_scores)
     metrics.update(overall)
