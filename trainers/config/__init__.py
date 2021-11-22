@@ -1,6 +1,6 @@
 from .data import (
     get_tokenizers,
-    get_datasets,
+    get_pretrain_datasets,
     get_finetune_datasets,
     add_data_args,
     add_tokenizer_args,

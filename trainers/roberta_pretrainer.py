@@ -17,9 +17,12 @@ from trainers.state import (
     ModelState,
 )
 from trainers.meta_utils import (
+    cat_pred_examples,
+    evaluate,
     pseudo_step,
     query_step,
     real_step,
+    score_evaluate,
     support_step,
     update_step,
 )
@@ -28,7 +31,7 @@ import trainers.config as config
 import models.transformer as T
 
 
-def get_stats(tbx, pretrain_tokenizer, args):
+def get_stats(tbx, pretrain_tokenizer, scorer, args):
     train_tbx = stats.TensorboardScalars(
         tbx,
         "train",
@@ -38,7 +41,7 @@ def get_stats(tbx, pretrain_tokenizer, args):
             "steps",
         ],
     )
-    val_tbx = stats.TensorboardScalars(
+    log_tbx = stats.TensorboardScalars(
         tbx,
         "train",
         [
@@ -51,12 +54,24 @@ def get_stats(tbx, pretrain_tokenizer, args):
             "steps",
         ],
     )
-    student_tbx = stats.TensorboardWeights(tbx, "student")
-    formatter = stats.TokenizedTextFormatter(
-        pretrain_tokenizer, ["x_m", "y_m", "y_hat"]
+    val_tasks = ["MLM"]
+    val_tbx = stats.TensorboardScalars(
+        tbx,
+        "val",
+        scorer.get_overall_names(val_tasks) + scorer.get_metric_names(val_tasks),
     )
-    mlm_tbx = stats.TensorboardText(tbx, "train", "mlm", formatter, args.num_visuals)
-    return train_tbx, val_tbx, student_tbx, mlm_tbx
+    student_tbx = stats.TensorboardWeights(tbx, "student")
+    formatter = stats.JoinTextFormatter(
+        [
+            stats.StrTextFormatter(["idx"]),
+            stats.TokenizedTextFormatter(pretrain_tokenizer, ["x", "y"]),
+            stats.StrTextFormatter(["pred"]),
+        ]
+    )
+    text_tbxs = stats.TensorboardTexts(
+        tbx, "val", "example_{}", val_tasks, formatter, args.num_visuals
+    )
+    return train_tbx, log_tbx, val_tbx, student_tbx, text_tbxs
 
 
 def train(args):
@@ -80,10 +95,18 @@ def train(args):
     # Get tokenizers, data loaders, and visualizers
     log.info("Building dataset...")
     pretrain_tokenizer, task_tokenizer = config.get_tokenizers(args)
-    task_datasets, val_task_loaders, meta_dataset, meta_loader = config.get_datasets(
-        args, task_tokenizer, pretrain_tokenizer
+    (
+        meta_dataset,
+        meta_loader,
+        task_datasets,
+        task_loaders,
+        mlm_task_datasets,
+        mlm_task_loaders,
+    ) = config.get_pretrain_datasets(args, task_tokenizer, pretrain_tokenizer)
+    scorer = config.get_scorer(args)
+    train_tbx, val_tbx, log_tbx, student_tbx, text_tbxs = get_stats(
+        tbx, pretrain_tokenizer, args
     )
-    train_tbx, val_tbx, student_tbx, mlm_tbx = get_stats(tbx, pretrain_tokenizer, args)
 
     # Get model
     student = ModelState()
@@ -148,37 +171,43 @@ def train(args):
                 info = train_step(
                     x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, args, step
                 )
-                mlm_tbx.add_all(info["mlm"])
-                if "h" not in info:
-                    train_tbx(info, step.sample_num)
-                else:
-                    log.info(f"Evaluating at sample step {step.sample_num}...")
-                    # TODO: Use validation loss instead
-                    overall = {
-                        "loss0": info["student.loss0"],
-                        "loss2": info["student.loss2"],
-                    }
-                    saver.save(step.sample_num, student.model, overall)
-
-                    # Log to console
-                    overall_str = ", ".join(
-                        f"{k}: {v:05.2f}" for k, v in overall.items()
-                    )
-                    log.info(f"Val {overall_str}")
-
-                    log.info("Visualizing in TensorBoard...")
-                    val_tbx(info, step.sample_num)
-
-                if step.samples_til_eval <= 0:
-                    mlm_tbx(step.sample_num)
-                    mlm_tbx.clear()
-
                 # Log info
                 progress_bar.update(1)
                 progress_bar.set_postfix(
                     epoch=step.epoch,
                     loss=info["student.loss0"],
                 )
+                if "h" not in info:
+                    train_tbx(info, step.sample_num)
+                else:
+                    log_tbx(info, step.sample_num)
+
+                if step.samples_til_eval <= 0:
+                    # Evaluate and save checkpoint
+                    log.info(f"Evaluating at sample step {step.sample_num}...")
+
+                    losses, val_scores, tensors, preds = evaluate(
+                        student.model,
+                        mlm_task_loaders,
+                        mlm_task_datasets,
+                        ["MLM"],
+                        "val",
+                        device,
+                        args,
+                    )
+                    overall, overall_str, metrics = score_evaluate(
+                        scorer, val_scores, losses
+                    )
+                    # Log to console
+                    log.info(f"Val {overall_str}")
+
+                    # Log to TensorBoard
+                    log.info("Visualizing in TensorBoard...")
+                    text_tbxs(cat_pred_examples(tensors, preds), step)
+                    val_tbx(metrics, step.sample_num)
+
+                    # Save
+                    saver.save(step.sample_num, student.model, overall)
 
 
 def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, args, step):
@@ -190,7 +219,10 @@ def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, args, step):
     real_step(student, x_m, y_m, args, info)
 
     # Step student
-    if step.samples_til_log <= 0 and (step.step_num + 1) % args.gradient_accumulation == 0:
+    if (
+        step.samples_til_log <= 0
+        and (step.step_num + 1) % args.gradient_accumulation == 0
+    ):
         with torch.no_grad():
             deltas = [param.data.clone() for param in student.model.parameters()]
         update_step(student, step, batch_size, args, info)
@@ -216,7 +248,9 @@ def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, args, step):
 def add_train_args(parser: argparse.ArgumentParser):
     add_train_test_args(parser)
     config.add_train_args(parser)
-    config.add_model_saver_args(parser, metric_names=["loss0", "loss2"])
+    config.add_model_saver_args(
+        parser, metric_names=config.get_all_dataset_overall_names()
+    )
     config.add_lwpd_scheduler_args(parser)
     config.add_adamw_optimizer_args(parser)
 

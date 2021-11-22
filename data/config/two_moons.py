@@ -1,8 +1,10 @@
+import numbers
 import numpy as np
 import sklearn.datasets
 
 from data.datasets import FlatDataset, FlatPretrainDataset
 from data.tasks import WhichMoonTask
+from .util import add_all_to_overall, add_mean_to_overall, add_suffix
 
 
 def gen_moons(n_samples):
@@ -42,20 +44,25 @@ def get_raw_data():
     all_x, all_y = np.meshgrid(np.arange(0, 100), np.arange(0, 100))
     all_x, all_y = all_x.flatten(), all_y.flatten()
     data = {}
-    data["TWO_MOONS"] = gen_sequences(x, y, labels, 0, 512000, 16)
+    data["TWO_MOONS"] = {}
+    data["TWO_MOONS"]["train"] = gen_sequences(x, y, labels, 0, 512_000, 16)
+    data["TWO_MOONS"]["val"] = gen_sequences(x, y, labels, 600_000, 616_000, 16)
 
     data["Which_MOON"] = {}
-    data["Which_MOON"]["train"] = gen_which_moon(x, y, labels, 512010, 512020)
-    data["Which_MOON"]["val"] = gen_which_moon(x, y, labels, 512030, 512040)
+    data["Which_MOON"]["train"] = gen_which_moon(x, y, labels, 512_010, 512_020)
+    data["Which_MOON"]["val"] = gen_which_moon(x, y, labels, 512_030, 512_040)
     data["Which_MOON"]["test"] = gen_which_moon(
-        all_x, all_y, np.zeros_like(all_x), 0, 10000
+        all_x, all_y, np.zeros_like(all_x), 0, 10_000
     )
 
     return data
 
 
-def get_pretrain_dataset(data, tokenizer):
-    return FlatPretrainDataset(data["TWO_MOONS"], tokenizer)
+def get_pretrain_datasets(data, tokenizer):
+    return {
+        "train": FlatPretrainDataset(data["TWO_MOONS"]["train"], tokenizer),
+        "val": FlatPretrainDataset(data["TWO_MOONS"]["val"], tokenizer),
+    }
 
 
 def get_raw_task_datasets(data):
@@ -89,42 +96,76 @@ def get_tasks(tokenizer):
 
 class Scorer:
     dataset_names = ["Which_MOON"]
+    all_names = dataset_names + ["MLM"] + add_suffix(dataset_names + ["MLM"], "_loss")
+    metrics_map = {}
 
     @staticmethod
-    def scores_to_overall(scores):
-        moons = ["Which_MOON"]
-        moons_score = np.mean(
-            [np.mean(scores[name]) for name in moons if name in scores]
+    def scale_scores(scores, multiplier=100):
+        for k in scores:
+            if isinstance(scores[k], numbers.Number):
+                scores[k] *= 100
+            else:
+                scores[k] = tuple(v * multiplier for v in scores[k])
+
+    @classmethod
+    def scores_to_overall(cls, scores):
+        overall = {}
+        add_mean_to_overall(overall, scores, cls.dataset_names, "TWO_MOONS")
+        add_mean_to_overall(
+            overall, scores, add_suffix(cls.dataset_names, "_loss"), "TWO_MOONS_loss"
         )
-        return {"Overall": moons_score, "TWO_MOONS": moons_score}
+        add_all_to_overall(overall, scores, ["MLM", "MLM_loss"])
+        add_mean_to_overall(overall, overall, ["MLM", "TWO_MOONS"], "Overall")
+        add_mean_to_overall(overall, overall, ["MLM_loss", "TWO_MOONS_loss"], "loss")
+        return overall
 
-    @staticmethod
-    def scores_to_metrics(scores):
+    @classmethod
+    def scores_to_metrics(cls, scores):
         metrics = scores.copy()
+        for metric in cls.metrics_map:
+            if metric in metrics:
+                values = metrics.pop(metric)
+                for k, v in zip(cls.metrics_map[metric], values):
+                    metrics[k] = v
+
         return metrics
 
-    @staticmethod
-    def get_overall_names():
-        return ["Overall", "TWO_MOONS"]
+    @classmethod
+    def get_overall_names(cls, score_names=all_names):
+        overall = ["Overall", "loss"]
+        if any(name in score_names for name in cls.dataset_names):
+            overall.append("TWO_MOONS")
+
+        if any(name in score_names for name in add_suffix(cls.dataset_names, "_loss")):
+            overall.append("TWO_MOONS_loss")
+
+        for metric in ["MLM", "MLM_loss"]:
+            if metric in score_names:
+                overall.append(metric)
+
+        return overall
 
     @staticmethod
     def get_maximize_metrics():
         return {
             "Overall": True,
             "TWO_MOONS": True,
+            "TWO_MOONS_loss": False,
+            "MLM": True,
+            "MLM_loss": False,
+            "loss": False,
         }
 
     @classmethod
     def get_dataset_names(cls):
         return cls.dataset_names
 
-    @staticmethod
-    def get_metric_names(score_names=dataset_names):
+    @classmethod
+    def get_metric_names(cls, score_names=dataset_names):
         metrics = []
-        metrics_map = {}
         for name in score_names:
-            if name in metrics_map:
-                metrics += metrics_map[name]
+            if name in cls.metrics_map:
+                metrics += cls.metrics_map[name]
             else:
                 metrics.append(name)
 

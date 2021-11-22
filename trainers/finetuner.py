@@ -19,8 +19,11 @@ from trainers.state import (
     ModelSaver,
 )
 from trainers.meta_utils import (
+    cat_pred_examples,
     forward_step,
+    score_evaluate,
     update_step,
+    evaluate,
 )
 from trainers.optimizers import NoopOptimizer
 import trainers.config as config
@@ -46,19 +49,10 @@ def get_stats(tbx, pretrain_tokenizer, scorer, args):
         + [args.task + "_loss"],
     )
     student_tbx = stats.TensorboardWeights(tbx, "student")
-    formatter = stats.JoinTextFormatter(
-        [
-            stats.StrTextFormatter(["idx"]),
-            stats.TokenizedTextFormatter(pretrain_tokenizer, ["x", "y"]),
-            stats.StrTextFormatter(["pred"]),
-        ]
+    formatter = stats.TokenizedTextFormatter(pretrain_tokenizer, ["idx", "x", "y", "pred"])
+    text_tbxs = stats.TensorboardTexts(
+        tbx, "val", "example_{}", [args.task], formatter, args.num_visuals
     )
-    text_tbxs = {
-        name: stats.TensorboardText(
-            tbx, "val", "example_{}".format(name), formatter, args.num_visuals
-        )
-        for name in [args.task]
-    }
     return train_tbx, val_tbx, student_tbx, text_tbxs
 
 
@@ -92,10 +86,6 @@ def train(args):
         task_datasets[args.task][args.split],
         task_loaders[args.task][args.split],
     )
-    val_dataset, val_loader = (
-        task_datasets[args.task]["mini_val"],
-        task_loaders[args.task]["mini_val"],
-    )
 
     # Get model
     student = ModelState()
@@ -119,7 +109,6 @@ def train(args):
         // args.gradient_accumulation
     )
 
-    # TODO: Use the same settings for now
     student.optimizer = config.get_adamw_optimizer(args, student.model)
     student.noop_optimizer = NoopOptimizer(student.model.parameters())
     student.scheduler = config.get_lwpd_scheduler(args, student.optimizer, total_steps)
@@ -164,38 +153,29 @@ def train(args):
                 if step.samples_til_eval <= 0:
                     # Evaluate and save checkpoint
                     log.info(f"Evaluating at sample step {step.sample_num}...")
+
                     losses, val_scores, tensors, preds = evaluate(
-                        student.model, val_loader, val_dataset, device, args
+                        student.model,
+                        task_loaders,
+                        task_datasets,
+                        [args.task],
+                        "mini_val",
+                        device,
+                        args,
                     )
-                    for name in text_tbxs:
-                        for idx in tensors[name]:
-                            tensor_x, tensor_y = tensors[name][idx]
-                            text_tbxs[name].add([idx, tensor_x, tensor_y, preds[name][idx]])
-                        text_tbxs[name](step.sample_num)
-                        text_tbxs[name].clear()
-
-                    overall = scorer.scores_to_overall(val_scores)
-                    for k in overall:
-                        overall[k] *= 100
-                    overall["loss"] = np.mean(list(losses.values()))
-
-                    saver.save(step.sample_num, student.model, overall)
-
+                    overall, overall_str, metrics = score_evaluate(
+                        scorer, val_scores, losses
+                    )
                     # Log to console
-                    overall_str = ", ".join(
-                        f"{k}: {v:05.2f}" for k, v in overall.items()
-                    )
                     log.info(f"Val {overall_str}")
 
                     # Log to TensorBoard
                     log.info("Visualizing in TensorBoard...")
-                    metrics = scorer.scores_to_metrics(val_scores)
-                    for k in metrics:
-                        metrics[k] *= 100
-                    metrics.update(overall)
-                    metrics.update({k + "_loss": v for k, v in losses.items()})
-
+                    text_tbxs(cat_pred_examples(tensors, preds), step)
                     val_tbx(metrics, step.sample_num)
+
+                    # Save
+                    saver.save(step.sample_num, student.model, overall)
 
 
 def train_step(x, y, student, args, step):
@@ -214,41 +194,11 @@ def train_step(x, y, student, args, step):
     return info
 
 
-def evaluate(model, val_loader, val_dataset, device, args):
-    model.eval()
-    loss_meters = {}
-    tensors = {}
-    preds = {}
-    val_scores = {}
-    name = args.task
-    with torch.no_grad():
-        preds[name] = {}
-        tensors[name] = {}
-        loss_meters[name] = stats.AverageMeter()
-        for idxs, x, y in val_loader:
-            batch_size = x.size(0)
-            x, y = x.to(device), y.to(device)
-            mask = T.get_padding_mask(x, args.padding_idx)
-            with amp.autocast(enabled=args.autocast):
-                scores = model(x, padding_mask=mask)
-                loss = model.get_loss(scores, y, mask)
-            loss_meters[name].add(loss.item(), batch_size)
-            pred = val_dataset.predict(idxs, x, scores)
-            preds[name].update(pred)
-            tensors[name].update(stats.tensors_groupby_flatten(idxs, [x, y]))
-        val_scores[name] = val_dataset.score(preds[name])
-
-    model.train()
-    losses = {name: loss_meter.avg for name, loss_meter in loss_meters.items()}
-
-    return losses, val_scores, tensors, preds
-
-
 def add_train_args(parser: argparse.ArgumentParser):
     add_train_test_args(parser)
     config.add_train_args(parser)
     config.add_model_saver_args(
-        parser, metric_names=["loss"] + config.get_all_dataset_overall_names()
+        parser, metric_names=config.get_all_dataset_overall_names()
     )
     config.add_lwpd_scheduler_args(parser)
     config.add_adamw_optimizer_args(parser)

@@ -220,6 +220,42 @@ class WikiDataset(Dataset):
         return self
 
 
+class MiniWikiDataset(Dataset):
+    def __init__(self, dataset, split, column, tokenizer):
+        self.dataset = dataset
+        self.split = split
+        self.column = column
+        self.tokenizer = tokenizer
+        self.sizes = MiniWikiDataset._compute_sizes(dataset, split, column, tokenizer)
+
+    @staticmethod
+    def _compute_sizes(dataset, split, column, tokenizer):
+        sizes = np.full(len(dataset[split]), 0, dtype=np.int64)
+        total = 0
+        for i in tqdm(range(len(dataset[split]))):
+            encoding = tokenizer.encode(dataset[split][i][column])
+            size = 1 + len(encoding.overflowing)
+            total += size
+            sizes[i] = total
+        return sizes
+
+    def __getitem__(self, idx):
+        i = np.searchsorted(self.sizes, idx, side="right").item()
+        j = idx
+        if i > 0:
+            j -= self.sizes[i - 1]
+        encoding = self.tokenizer.encode(self.dataset[self.split][i][self.column])
+        encodings = [encoding] + encoding.overflowing
+        idx_tensor = torch.tensor([idx], dtype=torch.long)
+        return idx_tensor, torch.tensor(encodings[j].ids, dtype=torch.long)
+
+    def __len__(self):
+        return self.sizes[-1]
+
+    def as_eval_dict(self):
+        return self
+
+
 class FlatPretrainDataset(Dataset):
     def __init__(self, dataset, tokenizer):
         self.dataset = dataset
@@ -390,8 +426,8 @@ def get_task_datasets(raw_datasets, tasks, mini_val_size):
     return task_datasets
 
 
-def get_meta_dataset(pretrain_dataset, task_datasets, split):
+def get_meta_dataset(pretrain_datasets, task_datasets, split):
     multi_dataset = MultiTaskDataset(
         [splits[split] for splits in task_datasets.values()]
     )
-    return MetaDataset(pretrain_dataset, multi_dataset)
+    return MetaDataset(pretrain_datasets[split], multi_dataset)

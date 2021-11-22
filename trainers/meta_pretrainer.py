@@ -1,31 +1,34 @@
 # Copyright (c) Jeffrey Shen
 
-import json
 import argparse
+import json
 
 import torch
 import torch.cuda.amp as amp
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
 
-import trainers.stats as stats
-from trainers.state import (
-    KeepSimpleState,
-    TrainerState,
-    RandomState,
-    SimpleState,
-    ModelState,
-)
-from trainers.optimizers import NoopOptimizer
 import trainers.config as config
+import trainers.stats as stats
 from trainers.meta_utils import (
+    cat_pred_examples,
+    evaluate,
     h_step,
     mlm_step,
     pseudo_step,
     query_step,
     sample_step,
+    score_evaluate,
     support_step,
     update_step,
+)
+from trainers.optimizers import NoopOptimizer
+from trainers.state import (
+    KeepSimpleState,
+    ModelState,
+    RandomState,
+    SimpleState,
+    TrainerState,
 )
 import models.transformer as T
 
@@ -48,10 +51,11 @@ def get_stats(tbx, pretrain_tokenizer, scorer, args):
             "steps",
         ],
     )
+    val_tasks = ["MLM"]
     val_tbx = stats.TensorboardScalars(
         tbx,
         "val",
-        ["loss"] + scorer.get_overall_names() + scorer.get_metric_names(),
+        scorer.get_overall_names(val_tasks) + scorer.get_metric_names(val_tasks),
     )
     student_tbx = stats.TensorboardWeights(tbx, "student")
     formatter = stats.TokenizedTextFormatter(
@@ -60,7 +64,17 @@ def get_stats(tbx, pretrain_tokenizer, scorer, args):
     pseudo_tbx = stats.TensorboardText(
         tbx, "train", "pseudo", formatter, args.num_visuals
     )
-    return train_tbx, val_tbx, student_tbx, pseudo_tbx
+    formatter = stats.JoinTextFormatter(
+        [
+            stats.StrTextFormatter(["idx"]),
+            stats.TokenizedTextFormatter(pretrain_tokenizer, ["x", "y"]),
+            stats.StrTextFormatter(["pred"]),
+        ]
+    )
+    text_tbxs = stats.TensorboardTexts(
+        tbx, "val", "example_{}", val_tasks, formatter, args.num_visuals
+    )
+    return train_tbx, val_tbx, student_tbx, text_tbxs, pseudo_tbx
 
 
 def train(args):
@@ -84,11 +98,16 @@ def train(args):
     # Get tokenizers, data loaders, and visualizers
     log.info("Building dataset...")
     pretrain_tokenizer, task_tokenizer = config.get_tokenizers(args)
-    task_datasets, val_task_loaders, meta_dataset, meta_loader = config.get_datasets(
-        args, task_tokenizer, pretrain_tokenizer
-    )
+    (
+        meta_dataset,
+        meta_loader,
+        task_datasets,
+        task_loaders,
+        mlm_task_datasets,
+        mlm_task_loaders,
+    ) = config.get_pretrain_datasets(args, task_tokenizer, pretrain_tokenizer)
     scorer = config.get_scorer(args)
-    train_tbx, val_tbx, student_tbx, pseudo_tbx = get_stats(
+    train_tbx, val_tbx, student_tbx, text_tbxs, pseudo_tbx = get_stats(
         tbx, pretrain_tokenizer, scorer, args
     )
 
@@ -180,32 +199,31 @@ def train(args):
                 if step.samples_til_eval <= 0:
                     # Evaluate and save checkpoint
                     log.info(f"Evaluating at sample step {step.sample_num}...")
-                    # TODO: log all val losses, include MLM
-                    loss, val_scores, preds = evaluate(
-                        student.model, val_task_loaders, task_datasets, device, args
-                    )
-                    overall = scorer.scores_to_overall(val_scores)
-                    for k in overall:
-                        overall[k] *= 100
-                    overall["loss"] = loss
-                    saver.save(step.sample_num, student.model, overall)
 
-                    # Log to console
-                    overall_str = ", ".join(
-                        f"{k}: {v:05.2f}" for k, v in overall.items()
+                    losses, val_scores, tensors, preds = evaluate(
+                        student.model,
+                        mlm_task_loaders,
+                        mlm_task_datasets,
+                        ["MLM"],
+                        "val",
+                        device,
+                        args,
                     )
+                    overall, overall_str, metrics = score_evaluate(
+                        scorer, val_scores, losses
+                    )
+                    # Log to console
                     log.info(f"Val {overall_str}")
 
                     # Log to TensorBoard
                     log.info("Visualizing in TensorBoard...")
-                    metrics = scorer.scores_to_metrics(val_scores)
-                    for k in metrics:
-                        metrics[k] *= 100
-                    metrics.update(overall)
-
+                    text_tbxs(cat_pred_examples(tensors, preds), step)
                     val_tbx(metrics, step.sample_num)
                     pseudo_tbx(step.sample_num)
                     pseudo_tbx.clear()
+
+                    # Save
+                    saver.save(step.sample_num, student.model, overall)
 
 
 def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step):
@@ -238,37 +256,11 @@ def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step):
     return info
 
 
-def evaluate(model, val_loaders, task_datasets, device, args):
-    loss_meter = stats.AverageMeter()
-
-    model.eval()
-    preds = {}
-    val_scores = {}
-    with torch.no_grad():
-        for name, val_loader in val_loaders.items():
-            task_dataset = task_datasets[name]["mini_val"]
-            preds[name] = {}
-            for idxs, x, y in val_loader:
-                batch_size = x.size(0)
-                x, y = x.to(device), y.to(device)
-                mask = T.get_padding_mask(x, args.padding_idx)
-                with amp.autocast(enabled=args.autocast):
-                    scores = model(x, padding_mask=mask)
-                    loss = model.get_loss(scores, y, mask)
-                loss_meter.add(loss.item(), batch_size)
-                pred = task_dataset.predict(idxs, x, scores)
-                preds[name].update(pred)
-            val_scores[name] = task_dataset.score(preds[name])
-
-    model.train()
-    return loss_meter.avg, val_scores, preds
-
-
 def add_train_args(parser: argparse.ArgumentParser):
     add_train_test_args(parser)
     config.add_train_args(parser)
     config.add_model_saver_args(
-        parser, metric_names=["loss"] + config.get_all_dataset_overall_names()
+        parser, metric_names=config.get_all_dataset_overall_names()
     )
     config.add_lwpd_scheduler_args(parser)
     config.add_adamw_optimizer_args(parser)

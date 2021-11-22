@@ -179,3 +179,55 @@ def update_step(state: ModelState, step, batch_size, args, info):
         step.samples_til_eval = args.eval_per_n_samples
     step.samples_til_eval -= batch_size
     info["steps"] = step.step_num / args.gradient_accumulation
+
+
+def evaluate(model, loaders, datasets, names, split, device, args):
+    model.eval()
+    loss_meters = {}
+    tensors = {}
+    preds = {}
+    val_scores = {}
+    with torch.no_grad():
+        for name in names:
+            preds[name] = {}
+            tensors[name] = {}
+            loss_meters[name] = stats.AverageMeter()
+            for idxs, x, y in loaders[name][split]:
+                batch_size = x.size(0)
+                x, y = x.to(device), y.to(device)
+                mask = T.get_padding_mask(x, args.padding_idx)
+                with amp.autocast(enabled=args.autocast):
+                    scores = model(x, padding_mask=mask)
+                    loss = model.get_loss(scores, y, mask)
+                loss_meters[name].add(loss.item(), batch_size)
+                pred = datasets[name][split].predict(idxs, x, scores)
+                preds[name].update(pred)
+                tensors[name].update(stats.tensors_groupby_flatten(idxs, [x, y]))
+            val_scores[name] = datasets[name][split].score(preds[name])
+
+    model.train()
+    losses = {name: loss_meter.avg for name, loss_meter in loss_meters.items()}
+
+    return losses, val_scores, tensors, preds
+
+
+def cat_pred_examples(tensors, preds):
+    return {
+        name: [[idx] + list(tensors[name][idx]) + [preds[name][idx]] for idx in tensors[name]]
+        for name in tensors
+    }
+
+
+def score_evaluate(scorer, val_scores, losses):
+    val_scores = val_scores.copy()
+    scorer.scale_scores(val_scores, 100)
+    val_scores.update({k + "_loss": v for k, v in losses.items()})
+    overall = scorer.scores_to_overall(val_scores)
+
+    overall_str = ", ".join(
+        f"{k}: {v:05.2f}" for k, v in overall.items()
+    )
+
+    metrics = scorer.scores_to_metrics(val_scores)
+    metrics.update(overall)
+    return overall, overall_str, metrics

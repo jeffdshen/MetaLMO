@@ -7,6 +7,7 @@ from data.datasets import (
     MetaSampler,
     PretrainTaskDataset,
     TaskCollater,
+    TaskDataset,
     get_meta_dataset,
     get_task_datasets,
 )
@@ -38,7 +39,9 @@ def get_task_loader(args, task_dataset, shuffle):
     )
 
 
-def get_datasets(args, task_tokenizer: Tokenizer, pretrain_tokenizer: Tokenizer):
+def get_pretrain_datasets(
+    args, task_tokenizer: Tokenizer, pretrain_tokenizer: Tokenizer
+):
     if args.dataset == "nlp":
         data_config = data.config.nlp
         data_dir = args.data_dir
@@ -51,14 +54,17 @@ def get_datasets(args, task_tokenizer: Tokenizer, pretrain_tokenizer: Tokenizer)
     raw_datasets = data_config.get_raw_task_datasets(data_dir)
     tasks = data_config.get_tasks(task_tokenizer)
     task_datasets = get_task_datasets(raw_datasets, tasks, mini_val_size=args.val_size)
-    pretrain_dataset = data_config.get_pretrain_dataset(data_dir, pretrain_tokenizer)
+    pretrain_datasets = data_config.get_pretrain_datasets(data_dir, pretrain_tokenizer)
     mlm_task = get_mlm_task(
         pretrain_tokenizer, args.mask_prob, args.unmask_prob, args.randomize_prob
     )
-    pretrain_task_dataset = PretrainTaskDataset(
-        pretrain_dataset, mlm_task, window="random", strict=False
-    )
-    meta_dataset = get_meta_dataset(pretrain_task_dataset, task_datasets, "train")
+    pretrain_task_datasets = {
+        split: PretrainTaskDataset(
+            pretrain_dataset, mlm_task, window="random", strict=False
+        )
+        for split, pretrain_dataset in pretrain_datasets.items()
+    }
+    meta_dataset = get_meta_dataset(pretrain_task_datasets, task_datasets, "train")
     meta_sampler = MetaSampler(meta_dataset, args.epoch_size, args.samples_per_task)
     meta_loader = DataLoader(
         dataset=meta_dataset,
@@ -67,11 +73,37 @@ def get_datasets(args, task_tokenizer: Tokenizer, pretrain_tokenizer: Tokenizer)
         num_workers=args.num_workers,
         collate_fn=MetaCollater(args.padding_idx),
     )
-    val_task_loaders = {
-        name: get_task_loader(args, splits["mini_val"], shuffle=False)
+    task_loaders = {
+        name: {
+            split: get_task_loader(args, dataset, shuffle=(split != "train"))
+            for split, dataset in splits.items()
+        }
         for name, splits in task_datasets.items()
     }
-    return task_datasets, val_task_loaders, meta_dataset, meta_loader
+    mlm_task_datasets = {
+        "MLM": {
+            split: TaskDataset(
+                pretrain_dataset, mlm_task, window="random", strict=False
+            )
+            for split, pretrain_dataset in pretrain_datasets.items()
+        }
+    }
+    mlm_task_loaders = {
+        name: {
+            split: get_task_loader(args, dataset, shuffle=(split != "train"))
+            for split, dataset in splits.items()
+        }
+        for name, splits in mlm_task_datasets.items()
+    }
+
+    return (
+        meta_dataset,
+        meta_loader,
+        task_datasets,
+        task_loaders,
+        mlm_task_datasets,
+        mlm_task_loaders,
+    )
 
 
 def get_finetune_datasets(args, task_tokenizer: Tokenizer):

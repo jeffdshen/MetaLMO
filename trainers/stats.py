@@ -79,6 +79,22 @@ class TensorboardText:
             )
 
 
+class TensorboardTexts:
+    def __init__(self, tbx, group, tag_format, names, formatter, max_samples):
+        self.text_tbxs = {
+            name: TensorboardText(
+                tbx, group, tag_format.format(name), formatter, max_samples
+            )
+            for name in names
+        }
+
+    def __call__(self, info, step):
+        for name in self.text_tbxs:
+            self.text_tbxs[name].add_all(info[name])
+            self.text_tbxs[name](step.sample_num)
+            self.text_tbxs[name].clear()
+
+
 def tensors_to_lists(tensors):
     samples = [tensor.tolist() for tensor in tensors]
     samples = list(zip(*samples))
@@ -87,11 +103,11 @@ def tensors_to_lists(tensors):
 
 def tensors_groupby_flatten(idxs, tensors):
     unique_idxs, counts = idxs.unique_consecutive(dim=0, return_counts=True)
-    tensors = [[t.flatten().tolist() for t in tensor.split(counts.tolist())] for tensor in tensors]
-    return {
-        idx.item(): items
-        for idx, items in zip(unique_idxs, list(zip(*tensors)))
-    }
+    tensors = [
+        [t.flatten().tolist() for t in tensor.split(counts.tolist())]
+        for tensor in tensors
+    ]
+    return {idx.item(): items for idx, items in zip(unique_idxs, list(zip(*tensors)))}
 
 
 class TokenizedTextFormatter:
@@ -101,14 +117,20 @@ class TokenizedTextFormatter:
         self.skip_special_tokens = skip_special_tokens
 
     def __call__(self, sample):
-        sample = [self.tokenizer.decode(x, self.skip_special_tokens) for x in sample]
+        sample = [
+            self.tokenizer.decode(x, self.skip_special_tokens)
+            if isinstance(x, list)
+            else repr(x)
+            for x in sample
+        ]
         keys = ["- **{}:** {{}}".format(x) for x in self.keys]
         text = "\n".join(k.format(repr(x)) for k, x in zip(keys, sample))
         return text
 
     def __len__(self):
         return len(self.keys)
-    
+
+
 class StrTextFormatter:
     def __init__(self, keys):
         self.keys = keys
@@ -130,7 +152,7 @@ class JoinTextFormatter:
         i = 0
         texts = []
         for formatter in self.formatters:
-            texts.append(formatter(sample[i:i + len(formatter)]))
+            texts.append(formatter(sample[i : i + len(formatter)]))
             i += len(formatter)
         return "\n".join(texts)
 
