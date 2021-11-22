@@ -4,6 +4,7 @@ import numbers
 import numpy as np
 from data.datasets import (
     FlatDataset,
+    MiniDataset,
     MiniWikiDataset,
     MultiRCDataset,
     ReCoRDDataset,
@@ -54,7 +55,7 @@ def get_raw_task_datasets(data_dir):
     }
 
 
-def get_pretrain_datasets(data_dir, tokenizer):
+def get_pretrain_datasets(data_dir, tokenizer, mini_val_size):
     path = pathlib.Path(data_dir)
     splits = ["train", "val"]
     cached_sizes_paths = {
@@ -70,7 +71,8 @@ def get_pretrain_datasets(data_dir, tokenizer):
         wiki, "train", "text", tokenizer, cached_sizes=cached_sizes["train"]
     )
     val_dataset = MiniWikiDataset(wiki, "test", "text", tokenizer)
-    return {"train": train_dataset, "val": val_dataset}
+    mini_val_dataset = MiniDataset(val_dataset, mini_val_size)
+    return {"train": train_dataset, "val": val_dataset, "mini_val": mini_val_dataset}
 
 
 def get_tasks(tokenizer):

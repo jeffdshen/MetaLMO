@@ -54,7 +54,9 @@ def get_pretrain_datasets(
     raw_datasets = data_config.get_raw_task_datasets(data_dir)
     tasks = data_config.get_tasks(task_tokenizer)
     task_datasets = get_task_datasets(raw_datasets, tasks, mini_val_size=args.val_size)
-    pretrain_datasets = data_config.get_pretrain_datasets(data_dir, pretrain_tokenizer)
+    pretrain_datasets = data_config.get_pretrain_datasets(
+        data_dir, pretrain_tokenizer, mini_val_size=args.val_size
+    )
     mlm_task = get_mlm_task(
         pretrain_tokenizer, args.mask_prob, args.unmask_prob, args.randomize_prob
     )

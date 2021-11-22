@@ -205,7 +205,7 @@ def train(args):
                         mlm_task_loaders,
                         mlm_task_datasets,
                         ["MLM"],
-                        "val",
+                        "mini_val",
                         device,
                         args,
                     )

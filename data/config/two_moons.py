@@ -2,7 +2,7 @@ import numbers
 import numpy as np
 import sklearn.datasets
 
-from data.datasets import FlatDataset, FlatPretrainDataset
+from data.datasets import FlatDataset, FlatPretrainDataset, MiniDataset
 from data.tasks import WhichMoonTask
 from .util import add_all_to_overall, add_mean_to_overall, add_suffix
 
@@ -58,10 +58,13 @@ def get_raw_data():
     return data
 
 
-def get_pretrain_datasets(data, tokenizer):
+def get_pretrain_datasets(data, tokenizer, mini_val_size):
+    val_dataset = FlatPretrainDataset(data["TWO_MOONS"]["val"], tokenizer)
+    mini_val_dataset = MiniDataset(val_dataset, mini_val_size)
     return {
         "train": FlatPretrainDataset(data["TWO_MOONS"]["train"], tokenizer),
-        "val": FlatPretrainDataset(data["TWO_MOONS"]["val"], tokenizer),
+        "val":  val_dataset,
+        "mini_val": mini_val_dataset,
     }
 
 

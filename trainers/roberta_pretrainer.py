@@ -104,8 +104,8 @@ def train(args):
         mlm_task_loaders,
     ) = config.get_pretrain_datasets(args, task_tokenizer, pretrain_tokenizer)
     scorer = config.get_scorer(args)
-    train_tbx, val_tbx, log_tbx, student_tbx, text_tbxs = get_stats(
-        tbx, pretrain_tokenizer, args
+    train_tbx, log_tbx, val_tbx, student_tbx, text_tbxs = get_stats(
+        tbx, pretrain_tokenizer, scorer, args
     )
 
     # Get model
@@ -191,7 +191,7 @@ def train(args):
                         mlm_task_loaders,
                         mlm_task_datasets,
                         ["MLM"],
-                        "val",
+                        "mini_val",
                         device,
                         args,
                     )
