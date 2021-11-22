@@ -40,16 +40,16 @@ def get_stats(tbx, pretrain_tokenizer, scorer, args):
             "steps",
         ],
     )
+    val_tasks = [args.task]
     val_tbx = stats.TensorboardScalars(
         tbx,
-        "train",
-        ["loss"]
-        + scorer.get_overall_names()
-        + scorer.get_metric_names([args.task])
-        + [args.task + "_loss"],
+        "val",
+        scorer.get_overall_names(val_tasks) + scorer.get_metric_names(val_tasks),
     )
     student_tbx = stats.TensorboardWeights(tbx, "student")
-    formatter = stats.TokenizedTextFormatter(pretrain_tokenizer, ["idx", "x", "y", "pred"])
+    formatter = stats.TokenizedTextFormatter(
+        pretrain_tokenizer, ["idx", "x", "y", "pred"]
+    )
     text_tbxs = stats.TensorboardTexts(
         tbx, "val", "example_{}", [args.task], formatter, args.num_visuals
     )

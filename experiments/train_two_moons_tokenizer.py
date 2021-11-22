@@ -33,7 +33,7 @@ def main():
 
     path = Path(args.save_dir)
     path.mkdir(parents=True, exist_ok=True)
-    dataset_iterable = two_moons.get_raw_data()["TWO_MOONS"]
+    dataset_iterable = two_moons.get_raw_data()["TWO_MOONS"]["train"]
     tokenizer = tokenizers.ByteLevelBPETokenizer()
     special_tokens = ["[PAD]", "[MASK]", "[SEP]"]
     for i in range(args.cls_count):
