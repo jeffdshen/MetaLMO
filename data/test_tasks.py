@@ -247,14 +247,10 @@ class MLMTestCase(unittest.TestCase):
         )
 
     def test_score(self):
-        pred = {0: [0, 50, 52, 0], 1: [4, 51, 51, 2], 3: [0, 0, 53, 0]}
-        idxs = torch.tensor([0, 1, 3, 4], dtype=torch.long)
+        pred = {0: [0, 50, 52, 0], 1: [4, 51, 51, 0], 3: [0, 0, 53, 0]}
         labels = torch.tensor(
-            [[0, 50, 51, 0], [4, 51, 52, 0], [0, 0, 53, 0], [1, 2, 3, 4]],
+            [[4, 50, 51, 2], [4, 51, 52, 2], [1, 2, 3, 4], [4, 51, 53, 2]],
             dtype=torch.long,
         )
-        score = self.task.score_single(idxs, pred, labels, strict=False)
-        self.assertEqual(set(score.keys()), set([0, 1, 3]))
-        self.assertAlmostEqual(score[0], 1 / 2)
-        self.assertAlmostEqual(score[1], 2 / 3)
-        self.assertAlmostEqual(score[3], 1)
+        score = self.task.score(pred, labels, strict=False)
+        self.assertAlmostEqual(score, (1 / 2 + 2 / 3 + 1) / 3)
