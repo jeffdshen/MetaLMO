@@ -489,11 +489,11 @@ class MLMTask:
             idxs = preds
 
         for idx in idxs:
-            label = examples[idx]
+            _, label = examples[idx]
             pred = preds[idx]
             # NOTE: Trust the pad_id tokens from pred, since we have no way of recovering
             # this from the original examples.
-            correct = sum([p != self.pad_id and l == p for l, p in zip(label, pred)])
+            correct = sum([p != self.pad_id and l == p for l, p in zip(label.tolist(), pred)])
             total = sum([p != self.pad_id for p in pred])
             if total > 0:
                 scores[idx] = float(correct / total)
