@@ -35,10 +35,10 @@ def add_args(parser):
     parser.add_argument("--seed", type=int, default=42, help="Seed")
 
 
-def main():
+def main(args=None):
     parser = argparse.ArgumentParser("Cache the sizes for wikipedia")
     add_args(parser)
-    args = parser.parse_args()
+    args = parser.parse_args(args)
 
     path = Path(args.save_dir)
     path.mkdir(parents=True, exist_ok=True)
