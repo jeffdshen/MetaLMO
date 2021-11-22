@@ -10,7 +10,7 @@ from tqdm import tqdm
 
 import trainers.config as config
 import trainers.stats as stats
-from trainers.meta_utils import (
+from trainers.util import (
     cat_pred_examples,
     evaluate,
     h_step,

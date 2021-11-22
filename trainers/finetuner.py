@@ -18,7 +18,7 @@ from trainers.state import (
     ModelState,
     ModelSaver,
 )
-from trainers.meta_utils import (
+from trainers.util import (
     cat_pred_examples,
     forward_step,
     score_evaluate,

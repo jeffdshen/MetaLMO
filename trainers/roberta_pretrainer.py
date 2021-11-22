@@ -16,7 +16,7 @@ from trainers.state import (
     SimpleState,
     ModelState,
 )
-from trainers.meta_utils import (
+from trainers.util import (
     cat_pred_examples,
     evaluate,
     pseudo_step,
