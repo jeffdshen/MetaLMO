@@ -69,9 +69,7 @@ def get_pretrain_datasets(data_dir, tokenizer):
     train_dataset = WikiDataset(
         wiki, "train", "text", tokenizer, cached_sizes=cached_sizes["train"]
     )
-    val_dataset = MiniWikiDataset(
-        wiki, "test", "text", tokenizer, cached_sizes=cached_sizes["val"]
-    )
+    val_dataset = MiniWikiDataset(wiki, "test", "text", tokenizer)
     return {"train": train_dataset, "val": val_dataset}
 
 
