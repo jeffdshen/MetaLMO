@@ -64,13 +64,7 @@ def get_stats(tbx, pretrain_tokenizer, scorer, args):
     pseudo_tbx = stats.TensorboardText(
         tbx, "train", "pseudo", formatter, args.num_visuals
     )
-    formatter = stats.JoinTextFormatter(
-        [
-            stats.StrTextFormatter(["idx"]),
-            stats.TokenizedTextFormatter(pretrain_tokenizer, ["x", "y"]),
-            stats.StrTextFormatter(["pred"]),
-        ]
-    )
+    formatter = stats.TokenizedTextFormatter(pretrain_tokenizer, ["idx", "x", "y", "pred"])
     text_tbxs = stats.TensorboardTexts(
         tbx, "val", "example_{}", val_tasks, formatter, args.num_visuals
     )
