@@ -178,22 +178,26 @@ class MultiTaskDataset(Dataset):
 
 
 class WikiDataset(Dataset):
-    def __init__(self, dataset, split, column, tokenizer, cached_sizes=None):
+    def __init__(self, dataset, split, column, tokenizer, cached_sizes=None, num_proc=16, len_column="len"):
         self.dataset = dataset
         self.split = split
         self.column = column
         self.tokenizer = tokenizer
         if cached_sizes is None:
-            self.sizes = WikiDataset._compute_sizes(dataset, split, column)
+            self.sizes = WikiDataset._compute_sizes(dataset, split, column, len_column, num_proc)
         else:
             self.sizes = cached_sizes
+        self.num_proc = num_proc
+        self.len_column = len_column
 
     @staticmethod
-    def _compute_sizes(dataset, split, column):
+    def _compute_sizes(dataset, split, column, len_column, num_proc):
         sizes = np.full(len(dataset[split]), 0, dtype=np.int64)
+        dataset = dataset[split].map(
+            lambda example: {len_column: len(example[column])}, num_proc=num_proc
+        )
         total = 0
-        for i in tqdm(range(len(dataset[split]))):
-            size = len(dataset[split][i][column])
+        for i, size in tqdm(enumerate(dataset[len_column])):
             total += size
             sizes[i] = total
         return sizes
