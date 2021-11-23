@@ -56,7 +56,8 @@ def get_raw_data():
     data["Which_MOON"] = {}
     data["Which_MOON"]["train"] = gen_which_moon(x, y, labels, 512_010, 512_020)
     data["Which_MOON"]["val"] = gen_which_moon(x, y, labels, 512_030, 512_040)
-    data["Which_MOON"]["test"] = gen_which_moon(x, y, labels, 512_100, 512_200)
+    # TODO:NOTE: Don't name this test so that scores get reported back
+    data["Which_MOON"]["test_score"] = gen_which_moon(x, y, labels, 512_100, 512_200)
     data["Which_MOON"]["vis"] = gen_which_moon(
         all_x, all_y, np.zeros_like(all_x), 0, 10_000
     )
