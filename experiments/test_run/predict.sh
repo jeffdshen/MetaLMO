@@ -4,13 +4,13 @@
 
 command=(
     python run.py predict
+    --name=nlp/predict/COPA/meta
     --dim=32
     --n_heads=2
     --ff_dim=128
     --n_layers=3
     --max_positions=512
     --prenorm=True
-    --name=test_run
     --val_size=16
     --task=COPA
 )

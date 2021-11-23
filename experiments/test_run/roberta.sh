@@ -4,13 +4,13 @@
 
 command=(
     python run.py roberta_pretrain
+    --name=nlp/pretrain/roberta
     --dim=32
     --n_heads=2
     --ff_dim=128
     --n_layers=3
     --max_positions=512
     --prenorm=True
-    --name=test_run
     --num_epochs=2
     --metric_names=loss
     --warmup_steps=100

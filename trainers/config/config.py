@@ -260,9 +260,9 @@ def add_train_args(parser):
     )
 
 
-def get_save_dir(base_dir, sub_dir, name, id_max=100):
+def get_save_dir(base_dir, name, id_max=100):
     for id in range(1, id_max):
-        save_dir: pathlib.Path = pathlib.Path(base_dir) / sub_dir / f"{name}-{id:02d}"
+        save_dir: pathlib.Path = pathlib.Path(base_dir) / f"{name}-{id:02d}"
         if not save_dir.exists():
             save_dir.mkdir(parents=True, exist_ok=False)
             return str(save_dir)

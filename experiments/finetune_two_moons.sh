@@ -9,7 +9,7 @@ fi
 
 command=(
     python run.py finetune
-    --name=meta_finetune_two_moons
+    --name=two_moons/finetune/Which_MOON/meta
     --max_positions 130
     --context_window_stride 0
     --tokenizer_dir=save/tokenizers/two-moons

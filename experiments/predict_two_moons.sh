@@ -9,7 +9,7 @@ fi
 
 command=(
     python run.py predict
-    --name=meta_predict_two_moons
+    --name=two_moons/predict/Which_MOON/meta
     --max_positions 130
     --context_window_stride 0
     --tokenizer_dir=save/tokenizers/two-moons

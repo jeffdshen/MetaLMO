@@ -40,7 +40,7 @@ def get_stats(tbx, pretrain_tokenizer, args):
 
 
 def train(args):
-    args.save_dir = config.get_save_dir(args.save_dir, "predict", args.name)
+    args.save_dir = config.get_save_dir(args.save_dir, args.name)
     device = config.update_gpus(args)
     log = stats.get_logger(args.save_dir, args.name)
     tbx = SummaryWriter(args.save_dir)

@@ -5,7 +5,7 @@
 
 command=(
     python run.py meta_pretrain
-    --name=meta_pretrain
+    --name=nlp/pretrain/meta
     --batch_size=4
     --prenorm=True
     --num_epochs=1000
