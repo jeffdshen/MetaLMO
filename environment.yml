@@ -15,5 +15,5 @@ dependencies:
   - datasets
   - tokenizers
   - scikit-learn 
-
+  - matplotlib
 
