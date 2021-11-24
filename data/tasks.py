@@ -50,11 +50,12 @@ def encoding_to_features(encoding, window):
     return selected_encodings_to_features(select_encodings(encoding, window))
 
 
-def prepare_task(task_id, example, encoding, labels: Labels, window: str):
+def prepare_task(task_id, pad_id, example, encoding, labels: Labels, window: str):
     features = encoding_to_features(encoding, window)
     features[:, 0] = task_id
     token = labels.to_token(example["label"]) if "label" in example else 0
     labels = torch.full_like(features, token, dtype=torch.long)
+    labels.masked_fill_(features == pad_id, pad_id)
     idxs = torch.full((features.size(0),), example["idx"])
     return idxs, features, labels
 
@@ -143,7 +144,9 @@ class BoolQTask:
 
     def encode(self, example, window):
         encoding = self.tokenizer.encode(example["question"], example["passage"])
-        return prepare_task(self.task_id, example, encoding, self.labels, window)
+        return prepare_task(
+            self.task_id, self.pad_id, example, encoding, self.labels, window
+        )
 
     def predict(self, idxs, inputs, outputs):
         return predict_argmax_mean(idxs, inputs, outputs, self.pad_id, self.labels)
@@ -162,7 +165,9 @@ class CBTask:
 
     def encode(self, example, window):
         encoding = self.tokenizer.encode(example["hypothesis"], example["premise"])
-        return prepare_task(self.task_id, example, encoding, self.labels, window)
+        return prepare_task(
+            self.task_id, self.pad_id, example, encoding, self.labels, window
+        )
 
     def predict(self, idxs, inputs, outputs):
         return predict_argmax_mean(idxs, inputs, outputs, self.pad_id, self.labels)
@@ -186,7 +191,9 @@ class COPATask:
         question = example["premise"] + " " + example["question"]
         choices = "0: " + example["choice1"] + " 1: " + example["choice2"]
         encoding = self.tokenizer.encode(question, choices)
-        return prepare_task(self.task_id, example, encoding, self.labels, window)
+        return prepare_task(
+            self.task_id, self.pad_id, example, encoding, self.labels, window
+        )
 
     def predict(self, idxs, inputs, outputs):
         return predict_argmax_mean(idxs, inputs, outputs, self.pad_id, self.labels)
@@ -205,7 +212,9 @@ class RTETask:
 
     def encode(self, example, window):
         encoding = self.tokenizer.encode(example["hypothesis"], example["premise"])
-        return prepare_task(self.task_id, example, encoding, self.labels, window)
+        return prepare_task(
+            self.task_id, self.pad_id, example, encoding, self.labels, window
+        )
 
     def predict(self, idxs, inputs, outputs):
         return predict_argmax_mean(idxs, inputs, outputs, self.pad_id, self.labels)
@@ -234,7 +243,9 @@ class WiCTask:
         s1 = str_insert(s1, [a1, b1], "*")
         s2 = str_insert(s2, [a2, b2], "*")
         encoding = self.tokenizer.encode(s1, s2)
-        return prepare_task(self.task_id, example, encoding, self.labels, window)
+        return prepare_task(
+            self.task_id, self.pad_id, example, encoding, self.labels, window
+        )
 
     def predict(self, idxs, inputs, outputs):
         return predict_argmax_mean(idxs, inputs, outputs, self.pad_id, self.labels)
@@ -292,7 +303,9 @@ class WSCTask:
         question = "{} = {}".format(target["span1_text"], target["span2_text"])
 
         encoding = self.tokenizer.encode(question, text)
-        return prepare_task(self.task_id, example, encoding, self.labels, window)
+        return prepare_task(
+            self.task_id, self.pad_id, example, encoding, self.labels, window
+        )
 
     def predict(self, idxs, inputs, outputs):
         return predict_argmax_mean(idxs, inputs, outputs, self.pad_id, self.labels)
@@ -344,6 +357,7 @@ class ReCoRDTask:
         features[:, 0] = self.task_id
         if "answers" in qa:
             labels = self._make_labels(encodings, qa["answers"], starts, ends)
+            labels.masked_fill_(features == self.pad_id, self.pad_id)
         else:
             labels = torch.zeros_like(features, dtype=torch.long)
         idxs = torch.full((features.size(0),), example["qas"]["idx"])
@@ -381,6 +395,7 @@ class MultiRCTask:
         features[:, 0] = self.task_id
         token = self.labels.to_token(label) if label is not None else 0
         labels = torch.full_like(features, token, dtype=torch.long)
+        labels.masked_fill_(features == self.pad_id, self.pad_id)
         idxs = torch.full((features.size(0),), idx)
         return idxs, features, labels
 
@@ -401,7 +416,9 @@ class WhichMoonTask:
 
     def encode(self, example, window):
         encoding = self.tokenizer.encode(example["question"])
-        return prepare_task(self.task_id, example, encoding, self.labels, window)
+        return prepare_task(
+            self.task_id, self.pad_id, example, encoding, self.labels, window
+        )
 
     def predict(self, idxs, inputs, outputs):
         return predict_argmax_mean(idxs, inputs, outputs, self.pad_id, self.labels)

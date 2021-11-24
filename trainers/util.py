@@ -197,10 +197,11 @@ def evaluate(model, loaders, datasets, names, split, device, args):
             for idxs, x, y in loaders[name][split]:
                 batch_size = x.size(0)
                 x, y = x.to(device), y.to(device)
-                mask = T.get_padding_mask(x, args.padding_idx)
+                mask_x = T.get_padding_mask(x, args.padding_idx)
+                mask_y = T.get_padding_mask(y, args.padding_idx)
                 with amp.autocast(enabled=args.autocast):
-                    scores = model(x, padding_mask=mask)
-                    loss = model.get_loss(scores, y, mask)
+                    scores = model(x, padding_mask=mask_x)
+                    loss = model.get_loss(scores, y, mask_y)
                 loss_meters[name].add(loss.item(), batch_size)
                 pred = datasets[name][split].predict(idxs, x, scores)
                 preds[name].update(pred)
