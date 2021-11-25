@@ -5,16 +5,16 @@
 command=(
     python run.py meta_pretrain
     --name=two_moons/pretrain/meta
-    --max_positions 130
+    --max_positions 34
     --context_window_stride 0
     --tokenizer_dir=save/tokenizers/two-moons
     --dataset=two_moons
     --batch_size=4
     --samples_per_task=4
     --prenorm=True
-    --dim=32
+    --dim=4
     --n_heads=2
-    --ff_dim=64
+    --ff_dim=16
     --n_layers=2
     --num_epochs=2
     --epoch_size=32
