@@ -40,9 +40,9 @@ def main():
         special_tokens.append("[CLS{}]".format(i))
 
     # Ensure every token compiles to one id
-    for i in range(100):
+    for i in range(64):
         dataset_iterable.append(str(i))
-    dataset_iterable.append(" ".join(str(i % 100) for i in range(200)))
+    dataset_iterable.append(" ".join(str(i % 64) for i in range(128)))
     tokenizer.train_from_iterator(
         dataset_iterable,
         vocab_size=args.vocab_size,
