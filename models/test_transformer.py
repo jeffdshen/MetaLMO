@@ -1,8 +1,9 @@
 import unittest
 
 import torch
+import numpy as np
 
-from .transformer import SoftLearnedTokenEmbedding
+from .transformer import LMHead, SoftLearnedTokenEmbedding
 
 
 class SoftLearnedTokenEmbeddingTestCase(unittest.TestCase):
@@ -39,3 +40,42 @@ class SoftLearnedTokenEmbeddingTestCase(unittest.TestCase):
             expected_grad[i] += 1.7 + i * 0.2
         expected_grad[1] = 0.0
         self.assertTorchAlmostEqual(e.embed.weight.grad, expected_grad)
+
+
+class LMHeadTestCase(unittest.TestCase):
+    def assertTorchAlmostEqual(self, a, b):
+        c = (a - b).detach().flatten().tolist()
+        for i, x in enumerate(c):
+            self.assertAlmostEqual(x, 0.0, msg=f"Not equal at {i}: {a}, {b}", places=6)
+
+    def test_get_loss(self):
+        scores = [[[2.0, -2.0, 0.0], [-2.0, 0.0, 2.0]], [[1.0, 1.0, 1.0], [1.0, 2.0, 3.0]]]
+        y = [[1, 2], [0, 2]]
+        mask = [[False, True], [False, False]]
+
+        expected = -np.log(np.exp(-2.0) / (np.sum(np.exp(scores[0][0]))))
+        expected += -np.log(np.exp(1.0) / (np.sum(np.exp(scores[1][0]))))
+        expected += -np.log(np.exp(3.0) / (np.sum(np.exp(scores[1][1]))))
+        expected /= 3
+
+        scores = torch.tensor(scores)
+        y = torch.tensor(y, dtype=torch.long)
+        mask = torch.tensor(mask, dtype=torch.bool)
+        loss = LMHead.get_loss(scores, y, mask, -1)
+        self.assertAlmostEqual(loss.item(), expected, places=6)
+
+    def test_get_loss_soft(self):
+        scores = [[[2.0, -2.0, 0.0], [-2.0, 0.0, 2.0]], [[1.0, 1.0, 1.0], [1.0, 2.0, 3.0]]]
+        y = [[[0.1, 0.9, 0.0], [0.0, 0.0, 1.0]], [[0.9, 0.0, 0.1], [0.1, 0.0, 0.9]]]
+        mask = [[False, True], [False, False]]
+
+        expected = np.dot([0.9, 0.1], -np.log(np.exp([-2.0, 2.0]) / (np.sum(np.exp(scores[0][0])))))
+        expected += np.dot([0.9, 0.1], -np.log(np.exp([1.0, 1.0]) / (np.sum(np.exp(scores[1][0])))))
+        expected += np.dot([0.9, 0.1], -np.log(np.exp([3.0, 1.0]) / (np.sum(np.exp(scores[1][1])))))
+        expected /= 3
+
+        scores = torch.tensor(scores)
+        y = torch.tensor(y)
+        mask = torch.tensor(mask, dtype=torch.bool)
+        loss = LMHead.get_loss(scores, y, mask, -1)
+        self.assertAlmostEqual(loss.item(), expected, places=6)

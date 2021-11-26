@@ -199,6 +199,11 @@ class TransformerEncoderEmbedding(nn.Module):
         return x
 
 
+def soft_cross_entropy(x, target):
+    logprob = F.log_softmax(x, dim=1)
+    return -(target * logprob).sum() / target.sum()
+
+
 class LMHead(nn.Module):
     def __init__(self, dim, output_tokens, activation, weight=None):
         super().__init__()
@@ -260,12 +265,25 @@ class LMHead(nn.Module):
     # ((N, S, O), (N, S), (N, S)) -> (1, )
     @staticmethod
     def get_loss(scores, y, mask, ignore_idx):
-        y = y.masked_fill(mask, ignore_idx)
+        if scores.size() == y.size():
+            if mask.dim() < y.dim():
+                mask = mask.unsqueeze(-1)
+            y = y.masked_fill(mask, 0.0)
+        else:
+            y = y.masked_fill(mask, ignore_idx)
+
         # Swap the dimension back to original order for speed reasons
         if not scores.is_contiguous():
             scores = scores.transpose(0, 1)
             y = y.transpose(0, 1)
-        return F.cross_entropy(scores.transpose(1, -1), y, ignore_index=ignore_idx)
+
+        if scores.size() == y.size():
+            # NOTE: cross_entropy with probabilities doesn't exist until torch 1.10.0
+            return soft_cross_entropy(scores.transpose(1, -1), y.transpose(1, -1))
+        else:
+            return F.cross_entropy(
+                scores.transpose(1, -1), y.transpose(1, -1), ignore_index=ignore_idx
+            )
 
 
 # (S, N) -> (S, N=1)
