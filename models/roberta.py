@@ -26,9 +26,13 @@ class RoBERTa(nn.Module):
         padding_idx,
         ignore_idx,
         prenorm=False,
+        soft_embedding=False,
     ):
         super().__init__()
-        embed_tokens = T.LearnedTokenEmbedding(max_tokens, dim, padding_idx)
+        if soft_embedding:
+            embed_tokens = T.SoftLearnedTokenEmbedding(max_tokens, dim, padding_idx)
+        else:
+            embed_tokens = T.LearnedTokenEmbedding(max_tokens, dim, padding_idx)
         self.embed = T.TransformerEncoderEmbedding(
             embed_tokens,
             T.LearnedPositionalEmbedding(max_positions, dim),

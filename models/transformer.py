@@ -27,6 +27,38 @@ class LearnedTokenEmbedding(nn.Module):
         return emb
 
 
+class SoftLearnedTokenEmbedding(nn.Module):
+    """Soft learned token embedding, capable of
+
+    Args:
+        num_words (int): Vocab size
+        embed_dim (int): Output size of the embedding
+        padding_idx (int): Padding index
+    """
+
+    def __init__(self, num_words, embed_dim, padding_idx):
+        super().__init__()
+        self.embed = nn.Embedding(num_words, embed_dim, padding_idx)
+        if padding_idx is None:
+            self.padding_idx = None
+        else:
+            padding_idx = torch.tensor(padding_idx, dtype=torch.long)
+            self.padding_idx = nn.Parameter(padding_idx, requires_grad=False)
+
+    @staticmethod
+    def soft_forward(x, weight, padding_idx):
+        if padding_idx is None:
+            return x @ weight
+        detached_weight = weight.detach().index_select(0, padding_idx)
+        return x @ weight.index_copy(0, padding_idx, detached_weight)
+
+    def forward(self, x):
+        if not x.dtype.is_floating_point:
+            return self.embed(x)
+        else:
+            return self.soft_forward(x, self.embed.weight, self.padding_idx)
+
+
 class LearnedPositionalEmbedding(nn.Module):
     """Learned positional embedding
 
