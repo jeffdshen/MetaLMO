@@ -41,7 +41,7 @@ def gen_which_moon(x, y, labels, gen):
 
 def get_raw_data():
     x, y, labels = gen_moons(1_000_000)
-    all_x, all_y = np.meshgrid(np.arange(0, 100), np.arange(0, 100))
+    all_x, all_y = np.meshgrid(np.arange(0, 64), np.arange(0, 64))
     all_x, all_y = all_x.flatten(), all_y.flatten()
     data = {}
     data["TWO_MOONS"] = {}
@@ -60,7 +60,7 @@ def get_raw_data():
         x, y, labels, range(512_100, 512_200)
     )
     data["Which_MOON"]["vis"] = gen_which_moon(
-        all_x, all_y, np.zeros_like(all_x), range(0, 10_000)
+        all_x, all_y, np.zeros_like(all_x), range(0, 64 * 64)
     )
 
     return data
