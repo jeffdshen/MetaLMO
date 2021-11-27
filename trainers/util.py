@@ -54,21 +54,7 @@ def pseudo_step(student: ModelState, x_hat, y_hat, args, info):
     return deltas
 
 
-def real_step(student: ModelState, x_m, y_m, args, info):
-    mask_x_m = T.get_padding_mask(x_m, args.padding_idx)
-    mask_y_m = T.get_padding_mask(y_m, args.padding_idx)
-    with amp.autocast(enabled=args.autocast):
-        scores = student.model(x_m, padding_mask=mask_x_m)
-        loss = student.model.get_loss(scores, y_m, mask_y_m)
-        y_hat = student.model.sample(scores, x_m, mask_y_m, k=1)
-        y_hat = y_hat.squeeze(0)
-    info["student.loss0"] = loss.item()
-    student.scaler.scale(loss / args.gradient_accumulation).backward()
-    info["mlm"] = stats.tensors_to_lists((x_m, y_m, y_hat))
-
-
-def forward_step(student: ModelState, x, y, args, info):
-    # TODO: Merge with real step once validation loss is used instead of mlm
+def real_step(student: ModelState, x, y, args, info):
     mask_x = T.get_padding_mask(x, args.padding_idx)
     mask_y = T.get_padding_mask(y, args.padding_idx)
     with amp.autocast(enabled=args.autocast):

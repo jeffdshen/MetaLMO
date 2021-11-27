@@ -20,7 +20,7 @@ from trainers.state import (
 )
 from trainers.util import (
     cat_pred_examples,
-    forward_step,
+    real_step,
     score_evaluate,
     update_step,
     evaluate,
@@ -186,7 +186,7 @@ def train_step(x, y, student, args, step):
     info["batch_size"] = batch_size
 
     # Student x, y forward, backward pass
-    forward_step(student, x, y, args, info)
+    real_step(student, x, y, args, info)
 
     # Step student
     update_step(student, step, batch_size, args, info)
