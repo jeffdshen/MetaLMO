@@ -23,18 +23,20 @@ def soft_sample_step(teacher: ModelState, x_u, args, info):
         )
         x_hat, y_hat = x_hat.squeeze(0), y_hat.squeeze(0)
 
+        x_soft, y_soft = teacher.model.get_prob(scores_x, scores_y)
+
     info["pseudo"] = stats.tensors_to_lists((x_u, x_hat, y_hat))
-    return scores_x, scores_y, mask_x_u
+    return x_soft, y_soft, mask_x_u
 
 
 def soft_pseudo_step(
-    diff_student: ModelState, scores_x, scores_y, mask_x_u, args, info
+    diff_student: ModelState, x_soft, y_soft, mask_x_u, args, info
 ):
     # NOTE: No autocast, because GradScaler is non-differentiable, and is very
     # annoying to replace.
     with amp.autocast(enabled=False):
-        scores = diff_student.model(scores_x, padding_mask=mask_x_u)
-        loss = diff_student.model.get_loss(scores, scores_y, mask_x_u)
+        scores = diff_student.model(x_soft, padding_mask=mask_x_u)
+        loss = diff_student.model.get_loss(scores, y_soft, mask_x_u)
     info["student.loss0"] = loss.item()
 
     # Save grad to add to student

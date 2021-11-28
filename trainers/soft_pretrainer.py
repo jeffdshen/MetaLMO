@@ -227,12 +227,16 @@ def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step):
     batch_size = x_u.size(0)
     info["batch_size"] = batch_size
 
-    scores_x, scores_y, mask_x_u = soft_sample_step(teacher, x_u, args, info)
-    with higher.innerloop_ctx(student.model, student.optimizer, copy_initial_weights=True) as (fmodel, diffopt):
+    x_soft, y_soft, mask_x_u = soft_sample_step(teacher, x_u, args, info)
+    with higher.innerloop_ctx(
+        student.model, student.optimizer, copy_initial_weights=True
+    ) as (fmodel, diffopt):
         diff_student = ModelState()
         diff_student.model = fmodel
         diff_student.optimizer = diffopt
-        grad_saver = soft_pseudo_step(diff_student, scores_x, scores_y, mask_x_u, args, info)
+        grad_saver = soft_pseudo_step(
+            diff_student, x_soft, y_soft, mask_x_u, args, info
+        )
         grad_saver.apply(student.model.parameters())
         soft_support_step(diff_student, x_s, y_s, args, info)
         loss = soft_query_step(diff_student, x_q, y_q, args, info)
