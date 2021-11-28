@@ -240,6 +240,7 @@ def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step):
         grad_saver.apply(student.model.parameters())
         soft_support_step(diff_student, x_s, y_s, args, info)
         loss = soft_query_step(diff_student, x_q, y_q, args, info)
+        loss = loss * args.meta_weight
         teacher.scaler.scale(loss / args.gradient_accumulation).backward()
 
     mlm_step(teacher, x_u, x_m, y_m, args, info)
@@ -263,6 +264,12 @@ def add_train_args(parser: argparse.ArgumentParser):
     config.add_lwpd_scheduler_args(parser)
     config.add_adamw_optimizer_args(parser)
 
+    parser.add_argument(
+        "--meta_weight",
+        type=float,
+        default=100,
+        help="How much weight to give to the meta task",
+    )
     parser.add_argument(
         "--autocast",
         type=config.bool_arg,
