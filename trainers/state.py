@@ -145,6 +145,8 @@ class ModelSaver:
             best_path = os.path.join(self.save_dir, f"best_{metric}.pth.tar")
             self.log.info(f"New best checkpoint for metric {metric} at step {step}...")
             torch.save(ckpt_dict, best_path)
+        latest_path = os.path.join(self.save_dir, f"latest.pth.tar")
+        torch.save(ckpt_dict, latest_path)
 
     @staticmethod
     def load_model(model, checkpoint_path, device, strict):
