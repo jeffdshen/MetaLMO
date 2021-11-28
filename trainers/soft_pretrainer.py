@@ -1,34 +1,37 @@
 # Copyright (c) Jeffrey Shen
 
-import json
 import argparse
+import json
 
 import torch
+from torch import optim
 import torch.cuda.amp as amp
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
+import higher
 
+import trainers.config as config
 import trainers.stats as stats
-from trainers.state import (
-    KeepSimpleState,
-    TrainerState,
-    RandomState,
-    SimpleState,
-    ModelState,
-)
 from trainers.util import (
     cat_pred_examples,
     evaluate,
+    mlm_step,
     optim_step,
-    pseudo_step,
-    query_step,
-    real_step,
     score_evaluate,
-    support_step,
+    soft_pseudo_step,
+    soft_query_step,
+    soft_sample_step,
+    soft_support_step,
     update_step,
 )
 from trainers.optimizers import NoopOptimizer
-import trainers.config as config
+from trainers.state import (
+    KeepSimpleState,
+    ModelState,
+    RandomState,
+    SimpleState,
+    TrainerState,
+)
 import models.transformer as T
 
 
@@ -38,17 +41,9 @@ def get_stats(tbx, pretrain_tokenizer, scorer, args):
         "train",
         [
             "student.lr",
-            "student.loss0",
-            "steps",
-        ],
-    )
-    log_tbx = stats.TensorboardScalars(
-        tbx,
-        "train",
-        [
-            "student.lr",
-            "unscaled_h",
-            "h",
+            "teacher.lr",
+            "teacher.loss_x_m",
+            "teacher.loss_y_m",
             "student.loss0",
             "student.loss1",
             "student.loss2",
@@ -65,12 +60,18 @@ def get_stats(tbx, pretrain_tokenizer, scorer, args):
     )
     student_tbx = stats.TensorboardWeights(tbx, "student")
     formatter = stats.TokenizedTextFormatter(
+        pretrain_tokenizer, ["x_u", "xhat_u", "yhat_u"]
+    )
+    pseudo_tbx = stats.TensorboardText(
+        tbx, "train", "pseudo", formatter, args.num_visuals
+    )
+    formatter = stats.TokenizedTextFormatter(
         pretrain_tokenizer, ["idx", "x", "y", "pred"]
     )
     text_tbxs = stats.TensorboardTexts(
         tbx, "val", "example_{}", val_tasks, formatter, args.num_visuals
     )
-    return train_tbx, log_tbx, val_tbx, student_tbx, text_tbxs
+    return train_tbx, val_tbx, student_tbx, text_tbxs, pseudo_tbx
 
 
 def train(args):
@@ -103,7 +104,7 @@ def train(args):
         mlm_task_loaders,
     ) = config.get_pretrain_datasets(args, task_tokenizer, pretrain_tokenizer)
     scorer = config.get_scorer(args)
-    train_tbx, log_tbx, val_tbx, student_tbx, text_tbxs = get_stats(
+    train_tbx, val_tbx, student_tbx, text_tbxs, pseudo_tbx = get_stats(
         tbx, pretrain_tokenizer, scorer, args
     )
 
@@ -118,6 +119,12 @@ def train(args):
     state.track_object("student.model", student.model)
     log.info("Student model:")
     log.info(student.model)
+    teacher = ModelState()
+    teacher.model = config.get_teacher_model(args, pretrain_tokenizer.get_vocab_size())
+    teacher.model = teacher.model.to(device)
+    state.track_object("teacher.model", teacher.model)
+    log.info("Teacher model:")
+    log.info(teacher.model)
 
     # Get optimizer, scheduler, and scaler
     total_steps = (
@@ -127,22 +134,25 @@ def train(args):
         // args.gradient_accumulation
     )
 
+    # TODO: Use the same settings for now
     student.optimizer = config.get_adamw_optimizer(args, student.model)
     student.noop_optimizer = NoopOptimizer(student.model.parameters())
     student.scheduler = config.get_lwpd_scheduler(args, student.optimizer, total_steps)
     student.scaler = amp.GradScaler()
+    teacher.optimizer = config.get_adamw_optimizer(args, teacher.model)
+    teacher.scheduler = config.get_lwpd_scheduler(args, teacher.optimizer, total_steps)
+    teacher.scaler = amp.GradScaler()
 
     state.track_object("student.optimizer", student.optimizer)
     state.track_object("student.scheduler", student.scheduler)
     state.track_object("student.scaler", student.scaler)
+    state.track_object("teacher.optimizer", teacher.optimizer)
+    state.track_object("teacher.scheduler", teacher.scheduler)
+    state.track_object("teacher.scaler", teacher.scaler)
 
     # Train
     step = SimpleState(
-        epoch=0,
-        step_num=0,
-        sample_num=0,
-        samples_til_log=args.log_per_n_samples,
-        samples_til_eval=args.eval_per_n_samples,
+        epoch=0, step_num=0, sample_num=0, samples_til_eval=args.eval_per_n_samples
     )
     state.track_object("step", step)
     state.track_object("random", rand)
@@ -150,6 +160,7 @@ def train(args):
 
     log.info("Training...")
     student.model.train()
+    teacher.model.train()
 
     while step.epoch != args.num_epochs:
         config.save_checkpoint(args, state)
@@ -168,18 +179,18 @@ def train(args):
                 y_q = y_q.to(device)
 
                 info = train_step(
-                    x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, args, step
+                    x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step
                 )
+                pseudo_tbx.add_all(info["pseudo"])
+
                 # Log info
                 progress_bar.update(1)
                 progress_bar.set_postfix(
                     epoch=step.epoch,
-                    loss=info["student.loss0"],
+                    teacher_loss=info["teacher.loss_y_m"],
+                    loss=info["student.loss2"],
                 )
-                if "h" not in info:
-                    train_tbx(info, step.sample_num)
-                else:
-                    log_tbx(info, step.sample_num)
+                train_tbx(info, step.sample_num)
 
                 if step.samples_til_eval <= 0:
                     # Evaluate and save checkpoint
@@ -204,44 +215,37 @@ def train(args):
                     log.info("Visualizing in TensorBoard...")
                     text_tbxs(cat_pred_examples(tensors, preds), step)
                     val_tbx(metrics, step.sample_num)
+                    pseudo_tbx(step.sample_num)
+                    pseudo_tbx.clear()
 
                     # Save
                     saver.save(step.sample_num, student.model, overall)
 
 
-def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, args, step):
+def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step):
     info = {}
     batch_size = x_u.size(0)
     info["batch_size"] = batch_size
 
-    # Student x_m, y_m forward, backward pass
-    real_step(student, x_m, y_m, args, info)
+    scores_x, scores_y, mask_x_u = soft_sample_step(teacher, x_u, args, info)
+    with higher.innerloop_ctx(student.model, student.optimizer, copy_initial_weights=True) as (fmodel, diffopt):
+        diff_student = ModelState()
+        diff_student.model = fmodel
+        diff_student.optimizer = diffopt
+        grad_saver = soft_pseudo_step(diff_student, scores_x, scores_y, mask_x_u, args, info)
+        grad_saver.apply(student.model.parameters())
+        soft_support_step(diff_student, x_s, y_s, args, info)
+        loss = soft_query_step(diff_student, x_q, y_q, args, info)
+        teacher.scaler.scale(loss / args.gradient_accumulation).backward()
 
-    # Step student
-    if (
-        step.samples_til_log <= 0
-        and (step.step_num + 1) % args.gradient_accumulation == 0
-    ):
-        with torch.no_grad():
-            deltas = [param.data.clone() for param in student.model.parameters()]
-        optim_step(student, step, args)
-        update_step(step, batch_size, args, info)
-        with torch.no_grad():
-            for delta, param in zip(deltas, student.model.parameters()):
-                delta -= param.data
+    mlm_step(teacher, x_u, x_m, y_m, args, info)
 
-        # Student x_l, y_l forward, backward pass, compute h
-        orig_param = support_step(student, x_s, y_s, args, info)
-        _ = query_step(student, x_q, y_q, orig_param, deltas, args, info)
-
-        step.samples_til_log = args.log_per_n_samples
-    else:
-        optim_step(student, step, args)
-        update_step(step, batch_size, args, info)
-
-    step.samples_til_log -= batch_size
+    optim_step(teacher, step, args)
+    optim_step(student, step, args)
+    update_step(step, batch_size, args, info)
 
     info["student.lr"] = student.optimizer.param_groups[0]["lr"]
+    info["teacher.lr"] = teacher.optimizer.param_groups[0]["lr"]
 
     return info
 
@@ -262,12 +266,9 @@ def add_train_args(parser: argparse.ArgumentParser):
         help="Turn on autocast everywhere.",
     )
     parser.add_argument(
-        "--inner_lr", type=float, default=0.1, help="Inner learning rate for student."
-    )
-    parser.add_argument(
         "--samples_per_task",
         type=int,
-        default=16,
+        default=4,
         help="How many times to repeat the task before sampling from a different one.",
     )
     parser.add_argument(
@@ -278,12 +279,6 @@ def add_train_args(parser: argparse.ArgumentParser):
         type=int,
         default=128,
         help="Number of samples per task for validation.",
-    )
-    parser.add_argument(
-        "--log_per_n_samples",
-        type=int,
-        default=1000,
-        help="Number of samples between h evaluations",
     )
     parser.add_argument(
         "--eval_per_n_samples",
@@ -303,5 +298,5 @@ def add_train_test_args(parser):
     config.add_tokenizer_args(parser)
     config.add_data_args(parser)
     config.add_mlm_args(parser)
-    config.add_roberta_args(parser)
+    config.add_roberta_args(parser, defaults={"--soft_embedding": True})
     config.add_train_test_args(parser)

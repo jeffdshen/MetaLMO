@@ -16,4 +16,5 @@ dependencies:
   - tokenizers
   - scikit-learn 
   - matplotlib
-
+  - pip:
+    - higher

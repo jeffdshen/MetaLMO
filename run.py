@@ -2,7 +2,13 @@
 
 import argparse
 
-from trainers import finetuner, meta_pretrainer, roberta_pretrainer, predicter
+from trainers import (
+    finetuner,
+    meta_pretrainer,
+    roberta_pretrainer,
+    predicter,
+    soft_pretrainer,
+)
 
 
 def add_subparser(name, subparsers, parent_parser, module):
@@ -22,6 +28,7 @@ def main(args=None):
     subparsers = parser.add_subparsers()
 
     add_subparser("meta_pretrain", subparsers, parent, meta_pretrainer)
+    add_subparser("soft_pretrain", subparsers, parent, soft_pretrainer)
     add_subparser("roberta_pretrain", subparsers, parent, roberta_pretrainer)
     add_subparser("finetune", subparsers, parent, finetuner)
     add_subparser("predict", subparsers, parent, predicter)

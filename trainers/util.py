@@ -5,12 +5,62 @@ import torch
 import torch.nn as nn
 import torch.autograd as autograd
 import torch.cuda.amp as amp
+from trainers.optimizers import GradSaver
 
 from trainers.state import (
     ModelState,
 )
 import trainers.stats as stats
 import models.transformer as T
+
+
+def soft_sample_step(teacher: ModelState, x_u, args, info):
+    mask_x_u = T.get_padding_mask(x_u, args.padding_idx)
+    with amp.autocast(enabled=False):
+        scores_x, scores_y = teacher.model(x_u, padding_mask=mask_x_u)
+        x_hat, y_hat = teacher.model.sample(
+            scores_x, scores_y, x_u, x_u, mask_x_u, mask_x_u, k=1
+        )
+        x_hat, y_hat = x_hat.squeeze(0), y_hat.squeeze(0)
+
+    info["pseudo"] = stats.tensors_to_lists((x_u, x_hat, y_hat))
+    return scores_x, scores_y, mask_x_u
+
+
+def soft_pseudo_step(
+    diff_student: ModelState, scores_x, scores_y, mask_x_u, args, info
+):
+    # NOTE: No autocast, because GradScaler is non-differentiable, and is very
+    # annoying to replace.
+    with amp.autocast(enabled=False):
+        scores = diff_student.model(scores_x, padding_mask=mask_x_u)
+        loss = diff_student.model.get_loss(scores, scores_y, mask_x_u)
+    info["student.loss0"] = loss.item()
+
+    # Save grad to add to student
+    grad_saver = GradSaver()
+    diff_student.optimizer.step(
+        loss / args.gradient_accumulation, grad_callback=grad_saver
+    )
+    return grad_saver
+
+
+def soft_support_step(diff_student: ModelState, x_s, y_s, args, info):
+    mask_x_s = T.get_padding_mask(x_s, args.padding_idx)
+    with amp.autocast(enabled=False):
+        scores = diff_student.model(x_s, padding_mask=mask_x_s)
+        loss = diff_student.model.get_loss(scores, y_s, mask_x_s)
+    info["student.loss1"] = loss.item()
+    diff_student.optimizer.step(loss)
+
+
+def soft_query_step(diff_student: ModelState, x_q, y_q, args, info):
+    mask_x_q = T.get_padding_mask(x_q, args.padding_idx)
+    with amp.autocast(enabled=False):
+        scores = diff_student.model(x_q, padding_mask=mask_x_q)
+        loss = diff_student.model.get_loss(scores, y_q, mask_x_q)
+    info["student.loss2"] = loss.item()
+    return loss
 
 
 def sample_step(teacher: ModelState, x_u, args, info):
@@ -35,7 +85,7 @@ def sample_step(teacher: ModelState, x_u, args, info):
 
 def pseudo_step(student: ModelState, x_hat, y_hat, args, info):
     with torch.no_grad():
-        deltas = [param.data.clone() for param in student.model.parameters()]
+        deltas = [param.data.detach().clone() for param in student.model.parameters()]
     mask_x_hat = T.get_padding_mask(x_hat, args.padding_idx)
     with amp.autocast(enabled=args.autocast):
         scores = student.model(x_hat, padding_mask=mask_x_hat)
@@ -65,7 +115,10 @@ def real_step(student: ModelState, x, y, args, info):
 
 
 def support_step(student: ModelState, x_s, y_s, args, info):
-    orig_param = [param.data.clone() for param in student.model.parameters()]
+    with torch.no_grad():
+        orig_param = [
+            param.data.detach().clone() for param in student.model.parameters()
+        ]
     mask_x_s = T.get_padding_mask(x_s, args.padding_idx)
     with amp.autocast(enabled=args.autocast):
         scores = student.model(x_s, padding_mask=mask_x_s)
@@ -150,7 +203,7 @@ def mlm_step(teacher: ModelState, x_u, x_m, y_m, args, info):
     teacher.scaler.scale(loss / args.gradient_accumulation).backward()
 
 
-def update_step(state: ModelState, step, batch_size, args, info):
+def optim_step(state: ModelState, step, args):
     if (step.step_num + 1) % args.gradient_accumulation == 0:
         state.scaler.unscale_(state.optimizer)
         nn.utils.clip_grad_norm_(state.model.parameters(), args.max_grad_norm)
@@ -159,7 +212,8 @@ def update_step(state: ModelState, step, batch_size, args, info):
         state.scheduler.step()
         state.optimizer.zero_grad()
 
-    # Update steps
+
+def update_step(step, batch_size, args, info):
     step.step_num += 1
     step.sample_num += batch_size
     if step.samples_til_eval <= 0:

@@ -15,6 +15,7 @@ from trainers.util import (
     evaluate,
     h_step,
     mlm_step,
+    optim_step,
     pseudo_step,
     query_step,
     sample_step,
@@ -246,7 +247,8 @@ def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step):
     mlm_step(teacher, x_u, x_m, y_m, args, info)
 
     # Step teacher
-    update_step(teacher, step, batch_size, args, info)
+    optim_step(teacher, step, args)
+    update_step(step, batch_size, args, info)
 
     info["student.lr"] = student.optimizer.param_groups[0]["lr"]
     info["teacher.lr"] = teacher.optimizer.param_groups[0]["lr"]

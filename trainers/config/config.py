@@ -44,11 +44,15 @@ def get_roberta_model(args, max_tokens):
         padding_idx=args.padding_idx,
         ignore_idx=args.ignore_idx,
         prenorm=args.prenorm,
+        soft_embedding=args.soft_embedding,
     )
     return model
 
 
-def add_roberta_args(parser):
+def add_roberta_args(parser, defaults={}):
+    override_defaults = defaults
+    defaults = {"--soft_embedding": False}
+    defaults.update(override_defaults)
     parser.add_argument(
         "--dim",
         type=int,
@@ -101,6 +105,12 @@ def add_roberta_args(parser):
         "--prenorm",
         type=bool_arg,
         default=False,
+        help="Whether to put LayerNorm after the residual or before.",
+    )
+    parser.add_argument(
+        "--soft_embedding",
+        type=bool_arg,
+        default=defaults["--soft_embedding"],
         help="Whether to put LayerNorm after the residual or before.",
     )
 

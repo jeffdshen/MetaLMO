@@ -82,7 +82,6 @@ class TeacherRoBERTa(nn.Module):
         self.apply(lambda mod: T.init_params_bert(mod, 0.02))
 
     # (N, S), (N, S), (N, S) -> (N, S, O)
-    @amp.autocast()
     def forward(self, x, positions=None, padding_mask=None):
         x = x.transpose(0, 1)
         if positions is None:

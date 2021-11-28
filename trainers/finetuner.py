@@ -20,6 +20,7 @@ from trainers.state import (
 )
 from trainers.util import (
     cat_pred_examples,
+    optim_step,
     real_step,
     score_evaluate,
     update_step,
@@ -189,7 +190,8 @@ def train_step(x, y, student, args, step):
     real_step(student, x, y, args, info)
 
     # Step student
-    update_step(student, step, batch_size, args, info)
+    optim_step(student, step, args)
+    update_step(step, batch_size, args, info)
 
     info["student.lr"] = student.optimizer.param_groups[0]["lr"]
 
