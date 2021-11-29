@@ -13,10 +13,7 @@ import trainers.stats as stats
 from trainers.state import ModelSaver
 
 from .data import get_dataset_maximize_metric
-
-
-def bool_arg(s):
-    return (s.lower().startswith("t"),)
+from .util import bool_arg
 
 
 def get_maximize_metric():

@@ -8,8 +8,8 @@ from .data import (
     get_all_dataset_overall_names,
     get_scorer,
 )
+from .util import bool_arg
 from .config import (
-    bool_arg,
     update_gpus,
     reload_checkpoint,
     save_checkpoint,

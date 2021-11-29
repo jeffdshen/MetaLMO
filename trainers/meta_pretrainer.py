@@ -102,8 +102,6 @@ def train(args):
         meta_loader,
         task_datasets,
         task_loaders,
-        mlm_task_datasets,
-        mlm_task_loaders,
     ) = config.get_pretrain_datasets(args, task_tokenizer, pretrain_tokenizer)
     scorer = config.get_scorer(args)
     train_tbx, val_tbx, student_tbx, text_tbxs, pseudo_tbx = get_stats(
@@ -201,8 +199,8 @@ def train(args):
 
                     losses, val_scores, tensors, preds = evaluate(
                         student.model,
-                        mlm_task_loaders,
-                        mlm_task_datasets,
+                        task_loaders,
+                        task_datasets,
                         ["MLM"],
                         "mini_val",
                         device,

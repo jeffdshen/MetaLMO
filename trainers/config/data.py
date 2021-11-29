@@ -13,6 +13,7 @@ from data.datasets import (
 )
 from data.tasks import get_mlm_task
 from data.tokenizers import get_pretrain_tokenizer, get_task_tokenizer
+from .util import bool_arg
 
 
 def add_special_tokens(args, tokenizer):
@@ -66,7 +67,22 @@ def get_pretrain_datasets(
         )
         for split, pretrain_dataset in pretrain_datasets.items()
     }
-    meta_dataset = get_meta_dataset(pretrain_task_datasets, task_datasets, "train")
+    mlm_task_datasets = {
+        "MLM": {
+            split: TaskDataset(
+                pretrain_dataset, mlm_task, window="random", strict=False
+            )
+            for split, pretrain_dataset in pretrain_datasets.items()
+        }
+    }
+
+    if args.include_mlm_task:
+        task_datasets.update(mlm_task_datasets)
+        meta_dataset = get_meta_dataset(pretrain_task_datasets, task_datasets, "train")
+    else:
+        meta_dataset = get_meta_dataset(pretrain_task_datasets, task_datasets, "train")
+        task_datasets.update(mlm_task_datasets)
+
     meta_sampler = MetaSampler(meta_dataset, args.epoch_size, args.samples_per_task)
     meta_loader = DataLoader(
         dataset=meta_dataset,
@@ -82,29 +98,12 @@ def get_pretrain_datasets(
         }
         for name, splits in task_datasets.items()
     }
-    mlm_task_datasets = {
-        "MLM": {
-            split: TaskDataset(
-                pretrain_dataset, mlm_task, window="random", strict=False
-            )
-            for split, pretrain_dataset in pretrain_datasets.items()
-        }
-    }
-    mlm_task_loaders = {
-        name: {
-            split: get_task_loader(args, dataset, shuffle=(split != "train"))
-            for split, dataset in splits.items()
-        }
-        for name, splits in mlm_task_datasets.items()
-    }
 
     return (
         meta_dataset,
         meta_loader,
         task_datasets,
         task_loaders,
-        mlm_task_datasets,
-        mlm_task_loaders,
     )
 
 
@@ -190,6 +189,12 @@ def add_data_args(parser):
         choices=get_all_dataset_names(),
         default=get_all_dataset_names()[0],
         help="Which dataset to load.",
+    )
+    parser.add_argument(
+        "--include_mlm_task",
+        type=bool_arg,
+        default=False,
+        help="Whether to include mlm as a target task",
     )
     parser.add_argument(
         "--data_dir", type=str, default="./save/data/", help="Base directory for data"
