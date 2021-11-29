@@ -7,9 +7,9 @@ from data.tasks import WhichMoonTask
 from .util import add_all_to_overall, add_mean_to_overall, add_suffix
 
 
-def gen_moons(n_samples):
+def gen_moons(n_samples, seed):
     x, labels = sklearn.datasets.make_moons(
-        n_samples=n_samples, shuffle=True, noise=0.10, random_state=42
+        n_samples=n_samples, shuffle=True, noise=0.10, random_state=seed
     )
     x, y = x[:, 0], x[:, 1]
     x = np.interp(x, (-1.5, 2.5), (0, 63.99)).astype(int)
@@ -40,7 +40,7 @@ def gen_which_moon(x, y, labels, gen):
 
 
 def get_raw_data():
-    x, y, labels = gen_moons(1_000_000)
+    x, y, labels = gen_moons(1_000_000, seed=42)
     all_x, all_y = np.meshgrid(np.arange(0, 64), np.arange(0, 64))
     all_x, all_y = all_x.flatten(), all_y.flatten()
     data = {}
@@ -48,13 +48,13 @@ def get_raw_data():
     data["TWO_MOONS"]["train"] = gen_sequences(x, y, labels, 0, 512_000, 16)
     data["TWO_MOONS"]["val"] = gen_sequences(x, y, labels, 600_000, 616_000, 16)
 
-    # Manually pick ten examples for Which_MOON
-    train_points = [i + 512_000 for i in [76, 85, 21, 61, 42, 79, 4, 30, 10, 26]]
-    val_points = [i + 512_000 for i in [90, 31, 0, 51, 20, 39, 25, 67, 88, 59]]
+    # Regenerate examples to get an even distribution since the sizes are so small
+    train_points = gen_moons(10, seed=43)
+    val_points = gen_moons(10, seed=44)
 
     data["Which_MOON"] = {}
-    data["Which_MOON"]["train"] = gen_which_moon(x, y, labels, train_points)
-    data["Which_MOON"]["val"] = gen_which_moon(x, y, labels, val_points)
+    data["Which_MOON"]["train"] = gen_which_moon(*train_points, range(10))
+    data["Which_MOON"]["val"] = gen_which_moon(*val_points, range(10))
     # TODO:NOTE: Don't name this test so that scores get reported back
     data["Which_MOON"]["test_score"] = gen_which_moon(
         x, y, labels, range(512_100, 512_200)
