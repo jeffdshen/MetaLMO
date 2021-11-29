@@ -188,7 +188,7 @@ def add_lwpd_scheduler_args(parser):
     )
     parser.add_argument(
         "--decay_forever",
-        type=lambda s: s.lower().startswith("t"),
+        type=bool_arg,
         default=True,
         help="Whether the decay should reach end_lr at the end of training, or in the limit to infinity",
     )
