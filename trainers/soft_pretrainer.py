@@ -269,6 +269,12 @@ def add_train_args(parser: argparse.ArgumentParser):
         help="How much weight to give to the meta task",
     )
     parser.add_argument(
+        "--fixed_y",
+        type=config.bool_arg,
+        default=False,
+        help="Whether to fix the teacher outputs to the unlabeled data (y_soft = x_u)",
+    )
+    parser.add_argument(
         "--autocast",
         type=config.bool_arg,
         default=True,

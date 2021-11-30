@@ -25,6 +25,10 @@ def soft_sample_step(teacher: ModelState, x_u, args, info):
 
         x_soft, y_soft = teacher.model.get_prob(scores_x, scores_y)
 
+    if args.fixed_y:
+        y_soft = x_u
+        y_hat = x_u
+
     info["pseudo"] = stats.tensors_to_lists((x_u, x_hat, y_hat))
     return x_soft, y_soft, mask_x_u
 
