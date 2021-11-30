@@ -96,9 +96,10 @@ def train(args):
     student.model = config.get_roberta_model(args, pretrain_tokenizer.get_vocab_size())
     if args.load_path and not state.is_reloading():
         log.info(f"Loading model from {args.load_path}...")
-        student.model, _ = ModelSaver.load_model(
+        student.model, step_num = ModelSaver.load_model(
             student.model, args.load_path, device, strict=False
         )
+        log.info(f"Loaded model from step {step_num}")
     student.model = student.model.to(device)
     state.track_object("student.model", student.model)
     log.info("Student model:")
