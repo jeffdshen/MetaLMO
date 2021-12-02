@@ -48,7 +48,7 @@ def get_pretrain_datasets(
         data_dir = args.data_dir
     elif args.dataset == "two_moons":
         data_config = data.config.two_moons
-        data_dir = data_config.get_raw_data()
+        data_dir = data_config.get_raw_data(args.two_moons_finetune_samples)
     else:
         raise ValueError("Unrecognized dataset: {}".format(args.dataset))
 
@@ -189,6 +189,12 @@ def add_data_args(parser):
         choices=get_all_dataset_names(),
         default=get_all_dataset_names()[0],
         help="Which dataset to load.",
+    )
+    parser.add_argument(
+        "--two_moons_finetune_samples",
+        type=int,
+        default=10,
+        help="How many samples to use for finetuning for the two_moons dataset",
     )
     parser.add_argument(
         "--include_mlm_task",

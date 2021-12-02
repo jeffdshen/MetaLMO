@@ -39,7 +39,7 @@ def gen_which_moon(x, y, labels, gen):
     return examples
 
 
-def get_raw_data():
+def get_raw_data(finetune_samples):
     x, y, labels = gen_moons(1_000_000, seed=42)
     all_x, all_y = np.meshgrid(np.arange(0, 64), np.arange(0, 64))
     all_x, all_y = all_x.flatten(), all_y.flatten()
@@ -49,12 +49,12 @@ def get_raw_data():
     data["TWO_MOONS"]["val"] = gen_sequences(x, y, labels, 600_000, 616_000, 16)
 
     # Regenerate examples to get an even distribution since the sizes are so small
-    train_points = gen_moons(10, seed=43)
-    val_points = gen_moons(10, seed=44)
+    train_points = gen_moons(finetune_samples, seed=43)
+    val_points = gen_moons(finetune_samples, seed=44)
 
     data["Which_MOON"] = {}
-    data["Which_MOON"]["train"] = gen_which_moon(*train_points, range(10))
-    data["Which_MOON"]["val"] = gen_which_moon(*val_points, range(10))
+    data["Which_MOON"]["train"] = gen_which_moon(*train_points, range(finetune_samples))
+    data["Which_MOON"]["val"] = gen_which_moon(*val_points, range(finetune_samples))
     # TODO:NOTE: Don't name this test so that scores get reported back
     data["Which_MOON"]["test_score"] = gen_which_moon(
         x, y, labels, range(512_100, 512_200)
