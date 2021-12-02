@@ -4,7 +4,6 @@ import argparse
 import json
 
 import torch
-from torch import optim
 import torch.cuda.amp as amp
 from torch.utils.tensorboard import SummaryWriter
 from tqdm import tqdm
@@ -137,6 +136,7 @@ def train(args):
     student.noop_optimizer = NoopOptimizer(student.model.parameters())
     student.scheduler = config.get_lwpd_scheduler(args, student.optimizer, total_steps)
     student.scaler = amp.GradScaler()
+    student.inner_optimizer = torch.optim.SGD(student.model.parameters(), args.inner_lr)
     teacher.optimizer = config.get_adamw_optimizer(args, teacher.model)
     teacher.scheduler = config.get_lwpd_scheduler(args, teacher.optimizer, total_steps)
     teacher.scaler = amp.GradScaler()
@@ -232,6 +232,11 @@ def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step):
         diff_student = ModelState()
         diff_student.model = fmodel
         diff_student.optimizer = diffopt
+        diff_student.inner_optimizer = higher.optim.get_diff_optim(
+            student.inner_optimizer,
+            student.model.parameters(),
+            fmodel=fmodel,
+        )
         grad_saver = soft_pseudo_step(
             diff_student, x_soft, y_soft, mask_x_u, args, info
         )
@@ -267,6 +272,9 @@ def add_train_args(parser: argparse.ArgumentParser):
         type=float,
         default=100,
         help="How much weight to give to the meta task",
+    )
+    parser.add_argument(
+        "--inner_lr", type=float, default=0.1, help="Inner learning rate for student."
     )
     parser.add_argument(
         "--fixed_y",

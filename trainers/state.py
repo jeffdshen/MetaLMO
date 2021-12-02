@@ -102,6 +102,7 @@ class ModelState:
     scheduler = None
     scaler = None
     noop_optimizer = None
+    inner_optimizer = None
 
 
 class ModelSaver:

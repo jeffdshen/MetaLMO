@@ -57,7 +57,7 @@ def soft_support_step(diff_student: ModelState, x_s, y_s, args, info):
         scores = diff_student.model(x_s, padding_mask=mask_x_s)
         loss = diff_student.model.get_loss(scores, y_s, mask_x_s)
     info["student.loss1"] = loss.item()
-    diff_student.optimizer.step(loss)
+    diff_student.inner_optimizer.step(loss)
 
 
 def soft_query_step(diff_student: ModelState, x_q, y_q, args, info):
