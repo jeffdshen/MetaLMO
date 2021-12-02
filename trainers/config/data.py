@@ -113,7 +113,7 @@ def get_finetune_datasets(args, task_tokenizer: Tokenizer):
         data_dir = args.data_dir
     elif args.dataset == "two_moons":
         data_config = data.config.two_moons
-        data_dir = data_config.get_raw_data()
+        data_dir = data_config.get_raw_data(args.two_moons_finetune_samples)
     else:
         raise ValueError("Unrecognized dataset: {}".format(args.dataset))
 
