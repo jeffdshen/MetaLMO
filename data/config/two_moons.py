@@ -57,7 +57,7 @@ def get_raw_data(finetune_samples):
     data["Which_MOON"]["val"] = gen_which_moon(*val_points, range(finetune_samples))
     # TODO:NOTE: Don't name this test so that scores get reported back
     data["Which_MOON"]["test_score"] = gen_which_moon(
-        x, y, labels, range(512_100, 512_200)
+        x, y, labels, range(513_000, 514_000)
     )
     data["Which_MOON"]["vis"] = gen_which_moon(
         all_x, all_y, np.zeros_like(all_x), range(0, 64 * 64)
