@@ -3,6 +3,7 @@ import json
 import pathlib
 import random
 from itertools import groupby
+from collections.abc import Sequence
 
 from tqdm import tqdm
 import numpy as np
@@ -395,10 +396,17 @@ class MetaCollater:
 
 
 class MetaSampler(Sampler):
-    def __init__(self, dataset: MetaDataset, num_samples: int, samples_per_task: int):
+    def __init__(
+        self,
+        dataset: MetaDataset,
+        num_samples: int,
+        samples_per_task: int,
+        task_weights: Sequence,
+    ):
         self.dataset = dataset
         self.num_samples = num_samples
         self.samples_per_task = samples_per_task
+        self.task_weights = task_weights
 
     def __iter__(self):
         items = []
@@ -406,7 +414,9 @@ class MetaSampler(Sampler):
         for i in range(self.num_samples):
             meta_idx = random.randrange(meta_size)
             if i % self.samples_per_task == 0:
-                task_idx = random.randrange(len(multi_sizes))
+                task_idx = random.choices(
+                    range(len(multi_sizes)), weights=self.task_weights
+                )[0]
             example_idx_s = random.randrange(multi_sizes[task_idx])
             example_idx_q = random.randrange(multi_sizes[task_idx] - 1)
             if example_idx_q >= example_idx_s:

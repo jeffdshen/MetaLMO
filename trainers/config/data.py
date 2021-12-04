@@ -78,12 +78,18 @@ def get_pretrain_datasets(
 
     if args.include_mlm_task:
         task_datasets.update(mlm_task_datasets)
+        task_weights = [
+            len(task_datasets) - 1 if name == "MLM" else 1 for name in task_datasets
+        ]
         meta_dataset = get_meta_dataset(pretrain_task_datasets, task_datasets, "train")
     else:
         meta_dataset = get_meta_dataset(pretrain_task_datasets, task_datasets, "train")
         task_datasets.update(mlm_task_datasets)
+        task_weights = None
 
-    meta_sampler = MetaSampler(meta_dataset, args.epoch_size, args.samples_per_task)
+    meta_sampler = MetaSampler(
+        meta_dataset, args.epoch_size, args.samples_per_task, task_weights
+    )
     meta_loader = DataLoader(
         dataset=meta_dataset,
         sampler=meta_sampler,
