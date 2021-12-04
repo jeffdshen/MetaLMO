@@ -220,11 +220,7 @@ def train(args):
                     saver.save(step.sample_num, student.model, overall)
 
 
-def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step):
-    info = {}
-    batch_size = x_u.size(0)
-    info["batch_size"] = batch_size
-
+def inner_step(x_u, x_s, y_s, x_q, y_q, student, teacher, args, info):
     x_soft, y_soft, mask_x_u = soft_sample_step(teacher, x_u, args, info)
     with higher.innerloop_ctx(
         student.model, student.optimizer, copy_initial_weights=True
@@ -246,6 +242,13 @@ def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step):
         loss = loss * args.meta_weight
         teacher.scaler.scale(loss / args.gradient_accumulation).backward()
 
+
+def train_step(x_u, x_m, y_m, x_s, y_s, x_q, y_q, student, teacher, args, step):
+    info = {}
+    batch_size = x_u.size(0)
+    info["batch_size"] = batch_size
+
+    inner_step(x_u, x_s, y_s, x_q, y_q, student, teacher, args, info)
     mlm_step(teacher, x_u, x_m, y_m, args, info)
 
     optim_step(teacher, step, args)
