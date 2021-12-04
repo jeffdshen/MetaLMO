@@ -135,11 +135,11 @@ def train(args):
     student.optimizer = config.get_adamw_optimizer(args, student.model)
     student.noop_optimizer = NoopOptimizer(student.model.parameters())
     student.scheduler = config.get_lwpd_scheduler(args, student.optimizer, total_steps)
-    student.scaler = amp.GradScaler()
+    student.scaler = amp.GradScaler(enabled=False)
     student.inner_optimizer = torch.optim.SGD(student.model.parameters(), args.inner_lr)
     teacher.optimizer = config.get_adamw_optimizer(args, teacher.model)
     teacher.scheduler = config.get_lwpd_scheduler(args, teacher.optimizer, total_steps)
-    teacher.scaler = amp.GradScaler()
+    teacher.scaler = amp.GradScaler(enabled=False)
 
     state.track_object("student.optimizer", student.optimizer)
     state.track_object("student.scheduler", student.scheduler)
