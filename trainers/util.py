@@ -33,9 +33,7 @@ def soft_sample_step(teacher: ModelState, x_u, args, info):
     return x_soft, y_soft, mask_x_u
 
 
-def soft_pseudo_step(
-    diff_student: ModelState, x_soft, y_soft, mask_x_u, args, info
-):
+def soft_pseudo_step(diff_student: ModelState, x_soft, y_soft, mask_x_u, args, info):
     # NOTE: No autocast, because GradScaler is non-differentiable, and is very
     # annoying to replace.
     with amp.autocast(enabled=False):
@@ -189,23 +187,29 @@ def h_step(teacher: ModelState, teacher_grad, h):
 
 
 def mlm_step(teacher: ModelState, x_u, x_m, y_m, args, info):
-    # Train teacher to produce MLM
+    # Train teacher to produce MLM and with MLM
     mask_x_u = T.get_padding_mask(x_u, args.padding_idx)
+    mask_y_m = T.get_padding_mask(y_m, args.padding_idx)
     x_u[:, 0] = x_m[:, 0]
+
     # NOTE: T(x_m, y_m | x_u) won't work because they are not independent,
     # so we learn T(x_u, x_m | x_u)
     with amp.autocast(enabled=args.autocast):
-        scores_x, scores_y = teacher.model(x_u, padding_mask=mask_x_u)
-        loss = teacher.model.get_loss(scores_x, scores_y, x_m, x_u, mask_x_u, mask_x_u)
-    info["teacher.loss_x_m"] = loss.item()
-    teacher.scaler.scale(loss / args.gradient_accumulation).backward()
+        x_cat = torch.cat((x_u, x_m))
+        mask_x_cat = torch.cat((mask_x_u, mask_x_u))
+        scores_x, scores_y = teacher.model(x_cat, padding_mask=mask_x_cat)
+        scores_x_u, scores_x_m = torch.split(scores_x, (x_u.size(0), x_m.size(0)))
+        scores_y_u, scores_y_m = torch.split(scores_y, (x_u.size(0), x_m.size(0)))
+        loss_x_m = teacher.model.get_loss(
+            scores_x_u, scores_y_u, x_m, x_u, mask_x_u, mask_x_u
+        )
+        loss_y_m = teacher.model.get_loss(
+            scores_x_m, scores_y_m, x_m, y_m, mask_x_u, mask_y_m
+        )
+        loss = loss_x_m + loss_y_m
 
-    # Train teacher with MLM
-    mask_y_m = T.get_padding_mask(y_m, args.padding_idx)
-    with amp.autocast(enabled=args.autocast):
-        scores_x, scores_y = teacher.model(x_m, padding_mask=mask_x_u)
-        loss = teacher.model.get_loss(scores_x, scores_y, x_m, y_m, mask_x_u, mask_y_m)
-    info["teacher.loss_y_m"] = loss.item()
+    info["teacher.loss_x_m"] = loss_x_m.item()
+    info["teacher.loss_y_m"] = loss_y_m.item()
     teacher.scaler.scale(loss / args.gradient_accumulation).backward()
 
 
