@@ -283,7 +283,7 @@ def get_wsc_span(s, t, index):
 
 
 def overlap(a, b, c, d):
-    return a < d and b < c
+    return a < d and c < b
 
 
 class WSCTask:
